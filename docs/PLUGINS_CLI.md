@@ -43,10 +43,30 @@ nvidia NVML 272 abcdefghijkl /usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1
 - `abcdefghijkl` — display order of the 12 property slots (identity order here).
 - Path — Ubuntu aarch64 NVML soname.
 
-**Settings UI** (right-click panel or Plugins → *nvidia* tab, single "Options" page):
+**Settings UI** (right-click panel or **Configure → Plugins → nvidia**, single **Options** page):
 
-- **libNVML path** — text entry with valid/invalid icon; changing it re-initializes NVML on Apply.
-- **Counters** — one checkbox per property row (order 1–11, drag-and-droppable to reorder): GPU Load, GPU Clock, GPU Memory Clock, GPU Temperature, GPU Fan Speed (RPM), GPU Fan Speed (percentage), GPU Power Draw, Unified Memory (host), GPU Used Memory, GPU Reserved Memory, GPU Total Memory. Rows without a fixed chart (memory clock, fan, used/reserved/total mem) render as label+value text rows when checked. Saved back as the mask + order string above.
+![nvidia plugin options](configure-nvidia-options.png)
+
+| Field | What it does |
+|-------|----------------|
+| **libNVML path** | Text entry with valid/invalid icon (green ✓ when NVML loads). Changing it re-initializes NVML on **Apply** / **OK**. Default on Spark: `/usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1`. |
+| **Counters** (checkboxes, drag to reorder) | Each checked row becomes a dock strip. Order + mask saved to `nvidia NVML …` in `user-config`. |
+
+| Counter checkbox | Dock strip when enabled |
+|------------------|-------------------------|
+| GPU Load | Load % chart (0–100) |
+| GPU Clock | Clock chart (managed window 2400–2550 MHz) |
+| GPU Memory Clock | Text row (MHz) |
+| GPU Temperature | Temp in the text row under charts |
+| GPU Fan Speed | Text row (RPM) |
+| GPU Fan Speed (percentage) | Text row (%) |
+| GPU Power Draw | Power chart (W) |
+| Unified Memory (host) | UMA % in the text row |
+| GPU Used Memory | Text row |
+| GPU Reserved Memory | Text row |
+| GPU Total Memory | Text row |
+
+Managed install enables Load, Clock, Power, Temp, UMA (mask `272`). Fan and memory breakdown rows stay off unless you check them here.
 
 **Build pitfall:** link **both** `nvidia.o` and `nvml-lib.o`. A partial link produces a plugin that loads with an empty GPU block. Prefer `make -C plugins/nvidia clean && make -C plugins/nvidia`.
 

@@ -264,6 +264,7 @@ static GtkWidget *cfg_feat_btn[N_FEATS];
 
 static int json_extract_string_after(const char *json, const char *after,
                                      const char *key, char *out, size_t out_sz);
+static void format_docs_sync_dialog(const char *json, char *msg, size_t msg_sz);
 static void cb_recipes_refresh(GtkWidget *button, gpointer data);
 static void recipe_combo_select_name(const char *want);
 static void recipes_load_named(const char *name);
@@ -2872,8 +2873,14 @@ static void cb_docs_sync(GtkWidget *button, gpointer data)
 		gkrellm_config_message_dialog(_("Sync docs"), dialog_msg);
 		return;
 	}
-	snprintf(dialog_msg, sizeof(dialog_msg), "Docs synced%s.\n%s",
-	         airgap ? " (air-gap)" : "", out[0] ? out : "");
+	format_docs_sync_dialog(out, dialog_msg, sizeof(dialog_msg));
+	if (airgap) {
+		size_t n = strlen(dialog_msg);
+
+		if (n + 32 < sizeof(dialog_msg))
+			snprintf(dialog_msg + n, sizeof(dialog_msg) - n, "\n%s",
+			         _("Air-gap mode (vendored schema only)."));
+	}
 	gkrellm_config_message_dialog(_("Sync docs"), dialog_msg);
 }
 
@@ -3244,6 +3251,55 @@ static int json_extract_string_after(const char *json, const char *after,
 	memcpy(out, p, n);
 	out[n] = '\0';
 	return 0;
+}
+
+/* Human-readable Sync docs success text (never dump raw JSON). */
+static void format_docs_sync_dialog(const char *json, char *msg, size_t msg_sz)
+{
+	char release[64];
+	char source[64];
+	char sync_err[512];
+	char synced_at[80];
+	const char *p;
+	const char *q;
+	int env_count = 0;
+	size_t n;
+
+	if (!json || !msg || msg_sz < 32)
+		return;
+	release[0] = source[0] = sync_err[0] = synced_at[0] = '\0';
+	json_extract_string_after(json, NULL, "release", release, sizeof(release));
+	json_extract_string_after(json, NULL, "source", source, sizeof(source));
+	json_extract_string_after(json, NULL, "sync_error", sync_err, sizeof(sync_err));
+	json_extract_string_after(json, NULL, "synced_at", synced_at, sizeof(synced_at));
+	p = strstr(json, "\"env\"");
+	if (p) {
+		for (q = p; (q = strstr(q, "\"help\"")) != NULL; ) {
+			env_count++;
+			q++;
+		}
+	}
+	n = (size_t)snprintf(msg, msg_sz,
+	                     _("Docs schema %s synced.\n"
+	                       "Source: %s\n"
+	                       "Environment variables: %d"),
+	                     release[0] ? release : "?",
+	                     source[0] ? source
+	                               : _("live NVIDIA docs"),
+	                     env_count);
+	if (synced_at[0] && n < msg_sz - 1)
+		n += (size_t)snprintf(msg + n, msg_sz - n, "\nTimestamp: %s",
+		                      synced_at);
+	if (sync_err[0] && n < msg_sz - 1) {
+		if (!strcmp(source, "last_good"))
+			n += (size_t)snprintf(
+			    msg + n, msg_sz - n,
+			    "\n\n%s",
+			    _("Used vendored schema seed — live docs HTML did not "
+			      "parse (NVIDIA may have changed the page layout)."));
+		n += (size_t)snprintf(msg + n, msg_sz - n, "\n%s: %s",
+		                      _("Detail"), sync_err);
+	}
 }
 
 /* Set/replace a top-level JSON string field. Returns newly allocated JSON. */

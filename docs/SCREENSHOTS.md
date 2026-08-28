@@ -10,7 +10,22 @@ Regenerate from a running dock:
 
 Requires `DISPLAY` (usually `:1`), `xwininfo`, PyGObject (`Gdk`), and Pillow.
 
-## Files
+## Configure (Plugins) dialogs
+
+Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
+
+| File | What it shows |
+|------|----------------|
+| [`configure-nvidia-options.png`](configure-nvidia-options.png) | **nvidia** plugin — libNVML path + Counters checkboxes (see [PLUGINS_CLI.md](PLUGINS_CLI.md) · nvidia) |
+| [`configure-llm-connection.png`](configure-llm-connection.png) | **LLM NIM → Connection** — URL, display name, tokens, docs pin, air-gap (see [LLM_NIM_UI.md](LLM_NIM_UI.md#connection)) |
+| [`configure-llm-catalog.png`](configure-llm-catalog.png) | **LLM NIM → Catalog** — NGC model list, version, image ref, Refresh/Add/Sync docs/Pull (see [LLM_NIM_UI.md](LLM_NIM_UI.md#catalog)) |
+| [`configure-llm-local.png`](configure-llm-local.png) | **LLM NIM → Local** — local Docker images, Profiles, Make recipe (see [LLM_NIM_UI.md](LLM_NIM_UI.md#local)) |
+| [`configure-llm-recipes.png`](configure-llm-recipes.png) | **LLM NIM → Recipes** — JSON editor, profile, Start/Stop/Export (see [LLM_NIM_UI.md](LLM_NIM_UI.md#recipes)) |
+| [`configure-llm-instances.png`](configure-llm-instances.png) | **LLM NIM → Instances** — running containers, dock slots, adopt/orphans (see [LLM_NIM_UI.md](LLM_NIM_UI.md#instances)) |
+| [`configure-llm-options.png`](configure-llm-options.png) | **LLM NIM → Options** — chart scales, scrape timeout (see [LLM_NIM_UI.md](LLM_NIM_UI.md#options)) |
+| [`configure-llm-display.png`](configure-llm-display.png) | **LLM NIM → Display** — 27 metric checkboxes in four groups (see [LLM_NIM_UI.md](LLM_NIM_UI.md#display-tab)) |
+
+## Dock panel captures
 
 | File | What it shows |
 |------|----------------|

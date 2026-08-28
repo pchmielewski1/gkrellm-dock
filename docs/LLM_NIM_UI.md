@@ -44,6 +44,8 @@ Tab titles below are verbatim from the source. The source pads every notebook ta
 
 ### Connection
 
+![LLM NIM Connection tab](configure-llm-connection.png)
+
 Fields (top to bottom):
 
 | Label (verbatim) | Config key | Default | What it does |
@@ -70,6 +72,8 @@ If the helper is missing, the dialogs show (verbatim): `gkrellm-nim not found on
 
 ### Catalog
 
+![LLM NIM Catalog tab](configure-llm-catalog.png)
+
 Fields:
 
 | Field (verbatim) | Kind | What it does |
@@ -86,10 +90,12 @@ Buttons (one row):
 |--------|--------------|--------------------------|------------------------------|
 | `Refresh` | Syncs NIM images from NGC into the catalog cache and reloads the list; updates the `Last sync:` label (20 s + 120 s timeout). | `catalog-sync --json` | `Sync NIM images from NGC into catalog cache, then reload list.` |
 | `Add` | Adds a custom/pasted image ref to the catalog cache. | `catalog-add --image <ref> --json` | `Paste a custom nvcr.io image into Catalog cache. Models already listed: use Pull (not Add).` |
-| `Sync docs` | Fetches/caches the NIM docs schema for the `Docs schema pin` (Connection). Passes `--airgap` when the air-gap box is on. Does **not** pull model images. 60 s timeout. | `docs-sync --release <pin> [--airgap] --json` | `Fetch/cache NIM docs schema for Docs schema pin (Connection). Does not pull model images.` |
+| `Sync docs` | Fetches/caches the NIM docs schema for the `Docs schema pin` (Connection). Passes `--airgap` when the air-gap box is on. Does **not** pull model images. 60 s timeout. Success → short summary dialog (release, source, variable count, optional parse warning); errors show helper stderr only. | `docs-sync --release <pin> [--airgap] --json` | `Fetch/cache NIM docs schema for Docs schema pin (Connection). Does not pull model images.` |
 | `Pull` | `docker pull` of the selected Image ref; the pulled image then appears under **Local**. 45 s timeout, not killed on timeout (pull may continue). | `pull --image <ref> --json` | `docker pull selected Image ref → appears under Local.` |
 
 ### Local
+
+![LLM NIM Local tab](configure-llm-local.png)
 
 Fields:
 
@@ -108,6 +114,8 @@ Buttons (one row):
 | `Make recipe` | Creates a launch recipe for this image with Spark defaults (bind `127.0.0.1`); skips a real `--profile` only when the Recipes Profile entry is a placeholder. Opens the result in the Recipes editor. | `recipes-from-image --image <ref> [--profile <id>] --json` | `Create a launch recipe for this image (Spark defaults, bind 127.0.0.1). Then Recipes → Profile → Start.` |
 
 ### Recipes
+
+![LLM NIM Recipes tab](configure-llm-recipes.png)
 
 Fields:
 
@@ -134,6 +142,8 @@ Buttons (two rows):
 All recipe operations use a 20 s helper timeout except **Start** (60 s).
 
 ### Instances
+
+![LLM NIM Instances tab](configure-llm-instances.png)
 
 Fields:
 
@@ -163,6 +173,8 @@ Buttons (rows as laid out in the UI):
 
 ### Options
 
+![LLM NIM Options tab](configure-llm-options.png)
+
 Three spinbuttons (no buttons):
 
 | Label (verbatim) | Config key | Default | Range (min–max), step, page increment |
@@ -176,6 +188,8 @@ Three spinbuttons (no buttons):
 ---
 
 ## Display tab
+
+![LLM NIM Display tab](configure-llm-display.png)
 
 27 checkboxes, one per feature bit, in four framed groups (frame titles verbatim). Each checkbox label is verbatim from the source; the `features` value is the OR of the checked bits and the dock rebuilds live on every toggle.
 

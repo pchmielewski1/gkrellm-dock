@@ -236,6 +236,7 @@ Screenshots are regenerated from a live dock with `./scripts/capture_screenshots
 | [docs/PLUGINS.md](docs/PLUGINS.md) | Per-plugin deep reference: sources, scales, feature bitmask — when tuning a specific panel or metric |
 | [docs/PLUGINS_CLI.md](docs/PLUGINS_CLI.md) | Panels + every managed `user-config` key + on-disk locations — when looking up a config key |
 | [docs/LLM_NIM_UI.md](docs/LLM_NIM_UI.md) | LLM NIM settings: every tab, field, button + the dock panel anatomy — when configuring the NIM panel in the GUI |
+| [docs/CONFIGURE.md](docs/CONFIGURE.md) | Configure → Plugins screenshots + every field/button at a glance |
 | [docs/THEME.md](docs/THEME.md) | `gb10-blue` conventions and assets — when modifying or extending the theme |
 | [docs/SENSORS.md](docs/SENSORS.md) | Board thermal zones (TSOC…TUNC) explained — when reading the Board panel or chasing thermals |
 
