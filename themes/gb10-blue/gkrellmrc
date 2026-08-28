@@ -1,0 +1,104 @@
+# gb10-blue — dark navy / ice cyan for DGX Spark
+author = "DGX Spark"
+theme_alternatives = 0
+chart_width_ref = 120
+allow_scaling = true
+
+frame_top_height = 8
+frame_bottom_height = 8
+frame_left_width = 4
+frame_right_width = 4
+bg_separator_height = 2
+spacer_top_height = 6
+spacer_bottom_height = 6
+bg_grid_mode = 0
+
+set_image_border bg_chart 2,2,2,2
+set_image_border bg_panel 2,2,1,1
+set_image_border bg_meter 2,2,1,1
+button_panel_border = 2,2,2,2
+button_meter_border = 2,2,2,2
+
+chart_in_color = #5ad4ef
+chart_in_color_grid = #c8f6ff
+chart_out_color = #f0b060
+chart_out_color_grid = #ffe0a0
+
+krell_slider_depth = 7
+krell_slider_x_hot = 0
+krell_slider_expand = left
+
+# Defaults (*) — use StyleX *.key = value (bare "StyleX name" lines are invalid)
+StylePanel *.krell_depth = 6
+StylePanel *.krell_x_hot = 0
+StylePanel *.krell_yoff = 2
+StylePanel *.krell_expand = left
+StylePanel *.krell_left_margin = 3
+StylePanel *.krell_right_margin = 3
+StylePanel *.label_position = center
+StylePanel *.margins = 3,3,2,2
+StylePanel *.textcolor = #eaf7fc #050c14 none
+StylePanel *.font = small_font
+# 0 = opaque (1/2 shaped); shaped mode was clipping Mem/Swap/Board/Uptime
+StylePanel *.transparency = 0
+
+StyleMeter *.krell_depth = 1
+StyleMeter *.krell_x_hot = 0
+StyleMeter *.krell_yoff = 3
+StyleMeter *.krell_expand = left
+StyleMeter *.krell_left_margin = 3
+StyleMeter *.krell_right_margin = 3
+StyleMeter *.label_position = center
+StyleMeter *.margins = 3,3,2,2
+StyleMeter *.textcolor = #eaf7fc #050c14 none
+StyleMeter *.font = small_font
+StyleMeter *.transparency = 0
+
+StyleChart *.margins = 2,2,1,1
+StyleChart *.textcolor = #dff4fc #081220 none
+StyleChart *.font = small_font
+StyleChart *.transparency = 0
+
+# CPU charts — warm data color, roomy panels
+StyleChart cpu.textcolor = #ffe0b0 #081220 none
+StyleChart cpu_clusters.textcolor = #ffe0b0 #081220 none
+StyleChart cpu_clusters.margins = 2,2,2,2
+StylePanel cpu_clusters.krell_depth = 6
+StylePanel cpu_clusters.krell_yoff = 4
+StylePanel cpu_clusters.krell_left_margin = 58
+StylePanel cpu_clusters.krell_right_margin = 6
+StylePanel cpu_clusters.label_position = 8
+StylePanel cpu_clusters.margins = 4,4,5,5
+StylePanel cpu_clusters.textcolor = #eaf7fc #050c14 none
+
+# Mem/Swap — taller mem/bg_meter + yoffs so 3 krells don't crush labels
+StyleMeter mem.margins = 4,4,4,4
+StyleMeter mem.krell_yoff = 6
+StyleMeter mem.label_position = 8
+StyleMeter swap.margins = 4,4,4,4
+StyleMeter swap.krell_yoff = 8
+StyleMeter swap.label_position = 8
+StyleMeter board_acpi.margins = 4,3,2,2
+
+# LLM NIM
+StylePanel llm_nim.label_position = 8
+StylePanel llm_nim.margins = 3,3,3,3
+StylePanel llm_nim.textcolor = #eaf7fc #050c14 none
+StyleMeter llm_nim.margins = 3,3,2,2
+StyleMeter llm_nim.textcolor = #ffe0b0 #081220 none
+StyleChart llm_nim.textcolor = #ffe0b0 #081220 none
+StyleChart llm_nim.margins = 2,2,2,2
+
+StyleMeter timer.label_position = none
+
+set_integer mem_krell_buffers_yoff 16
+set_integer mem_krell_buffers_depth 1
+set_integer mem_krell_cache_yoff 24
+set_integer mem_krell_cache_depth 1
+set_image_border timer_bg_timer 2,2,2,2
+
+rx_led_x = 4
+rx_led_y = 2
+tx_led_x = -4
+tx_led_y = 2
+chart_text_no_fill = false

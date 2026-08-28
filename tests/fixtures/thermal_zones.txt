@@ -1,0 +1,7 @@
+0	acpitz	TSOC	56700
+1	acpitz	TS0E	54500
+2	acpitz	TS0P	54500
+3	acpitz	TS1E	54800
+4	acpitz	TS1P	54600
+5	acpitz	TGPU	56700
+6	acpitz	TUNC	53800
