@@ -10,6 +10,8 @@ Primary: **vLLM** (and NIM containers, which run vLLM inside) — `vllm:*` count
 
 Secondary: **SGLang** — auto-detected when `/metrics` contains `sglang:gen_throughput`, `sglang:token_usage`, or `sglang:prompt_tokens_total`. Requires `--enable-metrics` on the server. vLLM scrape path is unchanged; when SGLang is detected the plugin overlays `sglang:*` fields (histogram sums aggregate all label variants).
 
+Tertiary: **TensorFold** — auto-detected when `/metrics` contains any `tensorfold:` family (MiaAI Flash-Next TensorFold recipe, engine ≥ 0.6.1). Metrics keep a `tensorfold:` prefix even on vLLM-shaped names. Detection order: SGLang → TensorFold → vLLM.
+
 | Dock field | SGLang metric | Note |
 |---|---|---|
 | Dec (t/s) | `sglang:gen_throughput` | server gauge; idle ≈ 0 |
@@ -35,6 +37,18 @@ Secondary: **SGLang** — auto-detected when `/metrics` contains `sglang:gen_thr
 | Engine lamp | — | awake when scrape OK |
 
 Still empty on SGLang (no server metric): **Dc** decode phase, **Rn** inference phase, **Bt** tokens/step, **Xp** external prefix, engine sleep states (w1/w2).
+
+| Dock field | TensorFold metric | Note |
+|---|---|---|
+| Dec / Pre / in / out | Δ `/health` `completion_tokens_total` / `prompt_tokens_total` | `/metrics` `*_tokens_total` are **finished requests only** — live Dec uses `/health` |
+| KV % | mean `tensorfold:kv_cache_usage_perc{stream=…}` | values are 0–1 ratios → ×100 |
+| Queue R/W | `num_requests_running` / `num_requests_waiting` | mirrors of `requests_*`; `/health` overlays running |
+| Spec % | `spec_decode_num_*` or `mtp_*_total` (+ `/health` accepted/drafted) | still finished-request biased mid-flight |
+| TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | E2E falls back to `request_latency_seconds` |
+| Pr | `preemptions_total` | when the CUDA scheduler counts yields |
+| Engine lamp | — | awake when scrape OK |
+
+Still empty on TensorFold: **ITL/TPOT**, **Qw/Pf/Dc/Rn**, **Prefix/Xp/Pc**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. `/health` `prefill_seconds_total` / `decode_seconds_total` are not live mid-request on current TF.
 
 Tab titles below are verbatim from the source. The source pads every notebook tab label with one leading and one trailing space: `" Connection "`, `" Catalog "`, `" Local "`, `" Recipes "`, `" Instances "`, `" Options "`, `" Display "`.
 

@@ -137,7 +137,7 @@ Five plugins are built and installed by `scripts/install.sh` / `make install`:
 | Plugin | Panel | Data source |
 |--------|-------|-------------|
 | `nvidia.so` | NVIDIA GB10: Load, Clock, Power, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
-| `llm_nim.so` | NIM / vLLM / SGLang panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** auto-detected via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`) |
+| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for Dec/Pre token counters |
 | `cpu_clusters.so` | CPU X925 / CPU A725 | `/proc/cpuinfo` + `/proc/stat` |
 | `uma_dram.so` | DRAM UMA | `/proc/meminfo` |
 | `board_acpi.so` | Board: TSOC, TGPU, TS0E, TS0P, TS1E, TS1P, TUNC | `/sys/class/thermal/` |
@@ -148,7 +148,7 @@ Per-plugin deep reference — scales, units, settings UI, config keys: [docs/PLU
 
 Scrapes a local OpenAI-compatible inference server (reference: Docker NIM/vLLM or SGLang on `http://127.0.0.1:8000`).
 
-- **Backend auto-detect:** vLLM/NIM when `/metrics` exposes `vllm:*`; SGLang when it exposes `sglang:gen_throughput`, `sglang:token_usage`, or `sglang:prompt_tokens_total`. SGLang servers must be started with **`--enable-metrics`** (and optionally `--enable-cache-report` for prefix-cache %). Full SGLang field mapping: [docs/LLM_NIM_UI.md](docs/LLM_NIM_UI.md#metrics-backends).
+- **Backend auto-detect:** vLLM/NIM when `/metrics` exposes `vllm:*`; SGLang when it exposes `sglang:gen_throughput`, `sglang:token_usage`, or `sglang:prompt_tokens_total` (requires **`--enable-metrics`**); **TensorFold** when it exposes any `tensorfold:` family (MiaAI Flash-Next TensorFold recipe ≥ 0.6.1). Full field mapping: [docs/LLM_NIM_UI.md](docs/LLM_NIM_UI.md#metrics-backends).
 - **Engine lamp** on the header row (right): green = awake, yellow = weights offloaded, red = discard_all, gray = down/unknown (vLLM sleep states; SGLang forces awake when metrics are live). Toggle via Display → **Engine status lamp**.
 - **Session token totals** (always on, not a Display checkbox) — two strips under the model name:
   - **`in`** — Prefill / prompt tokens since **this GKrellM dock process** started (sum of each scrape’s Δ prompt-token counter)

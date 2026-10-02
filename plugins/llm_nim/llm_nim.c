@@ -128,6 +128,7 @@ typedef struct {
 	HistPair mean_prompt, mean_gen, iter_tok;
 	double sglang_gen_tps;
 	int backend_sglang;
+	int backend_tensorfold;
 	int ok;
 } MetricsSnap;
 
@@ -623,6 +624,165 @@ static int metrics_body_has_sglang(const char *body)
 	       strstr(body, "sglang:prompt_tokens_total") != NULL;
 }
 
+/* Average every sample of a Prometheus gauge (handles labeled streams). */
+static int metric_mean_all(const char *body, const char *name, double *out)
+{
+	const char *p = body;
+	size_t nlen = strlen(name);
+	double total = 0;
+	int n = 0;
+
+	if (!body || !name || !out)
+		return -1;
+	while ((p = strstr(p, name)) != NULL) {
+		const char *q;
+		double v;
+
+		if (p > body && p[-1] != '\n' && p[-1] != '\r') {
+			p += nlen;
+			continue;
+		}
+		q = p + nlen;
+		if (*q != '{' && *q != ' ' && *q != '\t') {
+			p += nlen;
+			continue;
+		}
+		while (*q && *q != ' ' && *q != '\t' && *q != '\n')
+			++q;
+		while (*q == ' ' || *q == '\t')
+			++q;
+		if (sscanf(q, "%lf", &v) == 1) {
+			total += v;
+			++n;
+		}
+		p += nlen;
+	}
+	if (n <= 0)
+		return -1;
+	*out = total / (double)n;
+	return 0;
+}
+
+static int metrics_body_has_tensorfold(const char *body)
+{
+	if (!body)
+		return 0;
+	return strstr(body, "tensorfold:") != NULL;
+}
+
+/* Simple JSON number extract: "key": <number> (first match). */
+static int json_extract_number(const char *json, const char *key, double *out)
+{
+	char needle[96];
+	const char *p;
+	size_t key_len;
+
+	if (!json || !key || !out)
+		return -1;
+	key_len = strlen(key);
+	if (key_len + 4 >= sizeof(needle))
+		return -1;
+	snprintf(needle, sizeof(needle), "\"%s\"", key);
+	p = strstr(json, needle);
+	if (!p)
+		return -1;
+	p += strlen(needle);
+	while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+		p++;
+	if (*p != ':')
+		return -1;
+	p++;
+	while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+		p++;
+	if (sscanf(p, "%lf", out) == 1)
+		return 0;
+	return -1;
+}
+
+/*
+ * TensorFold /metrics token counters are finished-request only (HELP text).
+ * Live Dec/Pre need /health: completion_tokens_total grows during decode.
+ */
+static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
+{
+	char url[320];
+	char *body = NULL;
+	double v;
+
+	if (!base_url || !*base_url || !s)
+		return;
+	snprintf(url, sizeof(url), "%s/health", base_url);
+	if (http_get(url, &body) != 0 || !body)
+		return;
+
+	if (json_extract_number(body, "completion_tokens_total", &v) == 0)
+		s->gen_tokens = v;
+	if (json_extract_number(body, "prompt_tokens_total", &v) == 0)
+		s->prompt_tokens = v;
+	if (json_extract_number(body, "cached_tokens_total", &v) == 0)
+		s->prompt_cached = v;
+	if (json_extract_number(body, "requests_running", &v) == 0)
+		s->running = v;
+	if (json_extract_number(body, "accepted_total", &v) == 0)
+		s->spec_accepted = v;
+	if (json_extract_number(body, "drafted_total", &v) == 0)
+		s->spec_draft = v;
+	/* prefill/decode_seconds_total stay finished-only on current TF — skip. */
+
+	free(body);
+}
+
+/*
+ * TensorFold (MiaAI Flash-Next recipe, TF >= 0.6.1): /metrics is Prometheus
+ * text with a tensorfold: prefix. vLLM-shaped mirrors keep that prefix too
+ * (tensorfold:generation_tokens_total, …), so the vLLM scrape path above
+ * stays empty and we overlay here — same pattern as SGLang.
+ */
+static void fetch_tensorfold_metrics(const char *base_url, const char *body,
+                                     MetricsSnap *s)
+{
+	double v;
+
+	s->backend_tensorfold = 1;
+	s->backend_sglang = 0;
+
+	metric_double(body, "tensorfold:generation_tokens_total", &s->gen_tokens);
+	metric_double(body, "tensorfold:prompt_tokens_total", &s->prompt_tokens);
+	metric_double(body, "tensorfold:num_requests_running", &s->running);
+	if (s->running == 0.0)
+		metric_double(body, "tensorfold:requests_running", &s->running);
+	metric_double(body, "tensorfold:num_requests_waiting", &s->waiting);
+	if (s->waiting == 0.0)
+		metric_double(body, "tensorfold:requests_waiting", &s->waiting);
+
+	/* Named *_perc but values are 0–1 occupancy ratios per stream. */
+	if (metric_mean_all(body, "tensorfold:kv_cache_usage_perc", &v) == 0 ||
+	    metric_mean_all(body, "tensorfold:kv_cache_usage_ratio", &v) == 0) {
+		s->kv_pct = (v <= 1.0) ? (v * 100.0) : v;
+	}
+
+	if (metric_double(body, "tensorfold:spec_decode_num_accepted_tokens_total",
+	                  &s->spec_accepted) != 0)
+		metric_double(body, "tensorfold:mtp_accepted_total",
+		              &s->spec_accepted);
+	if (metric_double(body, "tensorfold:spec_decode_num_draft_tokens_total",
+	                  &s->spec_draft) != 0)
+		metric_double(body, "tensorfold:mtp_drafted_total",
+		              &s->spec_draft);
+
+	metric_double(body, "tensorfold:preemptions_total", &s->preempt);
+
+	hist_load(body, "tensorfold:time_to_first_token_seconds", &s->ttft);
+	hist_load(body, "tensorfold:e2e_request_latency_seconds", &s->e2e);
+	if (s->e2e.count <= 0.0)
+		hist_load(body, "tensorfold:request_latency_seconds", &s->e2e);
+
+	s->engine_awake = 1.0;
+
+	/* Live token counters — /metrics only updates on finished requests. */
+	overlay_tensorfold_health(base_url, s);
+}
+
 static void fetch_sglang_metrics(const char *body, MetricsSnap *s)
 {
 	double v, mem_gb = 0;
@@ -779,6 +939,9 @@ static int fetch_metrics(const char *base_url, MetricsSnap *s)
 	/* Auto-detect SGLang (/metrics uses sglang:*). vLLM path above stays intact. */
 	if (metrics_body_has_sglang(body))
 		fetch_sglang_metrics(body, s);
+	/* TensorFold (/metrics uses tensorfold:* including vLLM-shaped mirrors). */
+	else if (metrics_body_has_tensorfold(body))
+		fetch_tensorfold_metrics(base_url, body, s);
 
 	s->ok = 1;
 	free(body);
