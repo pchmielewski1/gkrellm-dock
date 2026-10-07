@@ -29,12 +29,12 @@ It provides a ready-made set of **GKrellM plugins** plus the **`gb10-blue`** the
 | Area | What you get |
 |------|----------------|
 | **GPU** | NVML Load %, Clock (**2400–2550 MHz** chart window), Power W, Temp + UMA % |
-| **LLM NIM** | Live **vLLM/NIM** or **SGLang** Prometheus panel — auto-detect backend, 27 toggleable metrics, engine lamp, session **`in`**/**`out`** tokens, up to **4** scrape slots |
+| **LLM NIM** | Live **vLLM/NIM**, **SGLang** or **TensorFold** Prometheus panel — auto-detect backend, 27 toggleable metrics, engine lamp, session **`in`**/**`out`** tokens, up to **4** scrape slots |
 | **CPU** | Separate charts for Cortex-**X925** and Cortex-**A725** (not a single composite) |
-| **Memory** | **DRAM UMA** used/total GB + %; stock **Swap** |
+| **Memory** | **UMA %** in the GPU block (unified memory); stock **Swap** meter; the separate `uma_dram.so` panel is optional (off by default) |
 | **Board** | 7 ACPI thermal zones: TSOC, TGPU, TS0E, TS0P, TS1E, TS1P, TUNC |
 | **Disk** | Composite Disk chart, fixed **200 MB/s** full scale |
-| **Net** | `docker0`, physical NICs, live container **veth**; PPP/bridge noise ignored |
+| **Net** | `docker0` + physical NICs (stock, shown while up); every UP container **veth** folded into one `net_clusters` chart; PPP/bridge noise ignored |
 | **Theme** | `gb10-blue` — dark navy / cyan dock skin |
 | **Config** | Managed `~/.gkrellm2` config via one installer script (`scripts/install.sh`) |
 
@@ -60,7 +60,7 @@ Options:
 That single `./scripts/install.sh`:
 
 1. Installs build/runtime packages via `apt` if missing (`gkrellm`, `libgtk2.0-dev`, `libcurl4-openssl-dev`, `pkg-config`, `build-essential`)
-2. Builds all five plugins (`make plugins`)
+2. Builds all six plugins (`make plugins`)
 3. Installs the plugins to `~/.gkrellm2/plugins/` and the theme to `~/.gkrellm2/themes/gb10-blue/`
 4. Writes the managed `~/.gkrellm2/user-config` + `plugin_enable` via `scripts/install_config.sh`
 
@@ -70,7 +70,7 @@ Then start the dock:
 gkrellm -t ~/.gkrellm2/themes/gb10-blue
 ```
 
-Verify it loaded the plugins: right-click the dock → **Plugins** — you should see **nvidia**, **LLM NIM**, **cpu_clusters**, **uma_dram** and **board_acpi** entries, and the dock should show the GPU, NIM, CPU-cluster, DRAM and Board panels (screenshot gallery below).
+Verify it loaded the plugins: right-click the dock → **Plugins** — you should see **nvidia**, **LLM NIM**, **cpu_clusters**, **net_clusters** and **board_acpi** entries, and the dock should show the GPU, NIM, CPU-cluster, folded Docker net and Board panels (screenshot gallery below).
 
 > **Not included:** the auto-launch/autostart script for GKrellM is intentionally **not** part of this project. Launching `gkrellm` at login, and pinning the window to the right edge, are handled by your host environment (e.g. a small GNOME autostart entry running `gkrellm -t ~/.gkrellm2/themes/gb10-blue -g +X+Y`).
 
@@ -93,15 +93,15 @@ Wayland-only sessions are **not** supported by window-placement tooling (GKrellM
 
 ## Dock layout (top → bottom)
 
-Typical order after a fresh install (plugin load order `nvidia → llm_nim → cpu_clusters → uma_dram → board_acpi`):
+Typical order after a fresh install (plugin load order `nvidia → llm_nim → cpu_clusters → net_clusters → board_acpi`):
 
 1. Hostname / clock
 2. **GPU** — Load, Clock, Power, Temp + UMA % (`nvidia.so`)
 3. **LLM / NIM** — header + engine lamp + session **`in`**/**`out`** token totals + one strip per enabled Display bit (`llm_nim.so`)
 4. **CPU X925** / **CPU A725** (`cpu_clusters.so`)
 5. Proc / Disk (stock)
-6. **Net** — `docker0`, container `veth*`, Wi‑Fi/Ethernet
-7. **DRAM UMA** (`uma_dram.so`) + Swap + **Board** + Uptime
+6. **Net** — `docker0`, Wi‑Fi/Ethernet (stock) + one folded **Docker** chart for all container `veth*` (`net_clusters.so`)
+7. Swap + **Board** + Uptime (unified-memory % is the **UMA %** chart in the GPU block; the separate `uma_dram.so` panel is built but not enabled by default — it duplicated that chart)
 
 ### Screenshot gallery
 
@@ -118,9 +118,8 @@ Every screenshot is a live capture from a running dock; the full catalog and re-
 | CPU (X925) | Cortex-X925 cluster only | ![cpu-x925](docs/gkrellm-cpu-x925.png) |
 | CPU (A725) | Cortex-A725 cluster only | ![cpu-a725](docs/gkrellm-cpu-a725.png) |
 | Proc / users | Process/user counts and the Proc meter | ![proc-area](docs/gkrellm-proc-area.png) |
-| Disk / Net | Disk chart + net meters (`docker0`, veth, Wi‑Fi/Ethernet) | ![net](docs/gkrellm-net.png) |
-| DRAM UMA | Unified memory used/total GB + % | ![mem](docs/gkrellm-mem-zoom.png) |
-| Bottom | DRAM UMA, Swap, Board thermals (TSOC…TUNC), Uptime | ![bottom](docs/gkrellm-bottom.png) |
+| Disk / Net | Disk chart + stock net meter(s) (Wi‑Fi/Ethernet, `docker0` while up) + the folded **Docker** chart (all UP container `veth*`: in = cyan top band, out = amber bottom band) | ![net](docs/gkrellm-net.png) |
+| Bottom | Swap, Board thermals (TSOC…TUNC), Uptime | ![bottom](docs/gkrellm-bottom.png) |
 
 Vertical slices (top / middle / lower of the full dock):
 
@@ -132,14 +131,15 @@ Vertical slices (top / middle / lower of the full dock):
 
 ## Plugins and panels
 
-Five plugins are built and installed by `scripts/install.sh` / `make install`:
+Six plugins are built and installed by `scripts/install.sh` / `make install`:
 
 | Plugin | Panel | Data source |
 |--------|-------|-------------|
 | `nvidia.so` | NVIDIA GB10: Load, Clock, Power, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
 | `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for Dec/Pre token counters |
 | `cpu_clusters.so` | CPU X925 / CPU A725 | `/proc/cpuinfo` + `/proc/stat` |
-| `uma_dram.so` | DRAM UMA | `/proc/meminfo` |
+| `net_clusters.so` | Docker — one chart (in/out bands) for **all** `veth*` interfaces, any number of containers | `/proc/net/dev` (rescanned every second) |
+| `uma_dram.so` | DRAM UMA (built/installed, **not enabled** by default — duplicates the GPU block's UMA %) | `/proc/meminfo` |
 | `board_acpi.so` | Board: TSOC, TGPU, TS0E, TS0P, TS1E, TS1P, TUNC | `/sys/class/thermal/` |
 
 Per-plugin deep reference — scales, units, settings UI, config keys: [docs/PLUGINS.md](docs/PLUGINS.md) and [docs/PLUGINS_CLI.md](docs/PLUGINS_CLI.md).
@@ -207,9 +207,9 @@ Offline / failed scrape: values show `down` or `-`; charts stay flat. Depends on
   ```
 
   LLM NIM preferences (`url`, `display_name`, `docs_release`, `airgap`, `features`, chart scales, timeout, slots) are **preserved** across re-apply when already set.
-- **Stock composite CPU** and **stock Mem meter** are disabled on purpose (cluster charts + DRAM UMA replace them).
-- **Prefill / GPU clock scales** and **live veth** enables are written by `install_config.sh` — see [docs/PLUGINS_CLI.md](docs/PLUGINS_CLI.md) (managed `user-config` key table) and [docs/PLUGINS.md](docs/PLUGINS.md).
-- After **recreating a Docker container**, veth names change; re-run `./scripts/install_config.sh` and restart GKrellM to pick up the new interface.
+- **Stock composite CPU** and **stock Mem meter** are disabled on purpose (cluster charts replace the CPU; the GPU block's **UMA %** replaces the Mem meter).
+- **Prefill / GPU clock scales** and the **net_clusters** pattern are written by `install_config.sh` — see [docs/PLUGINS_CLI.md](docs/PLUGINS_CLI.md) (managed `user-config` key table) and [docs/PLUGINS.md](docs/PLUGINS.md).
+- Container **veth** names change on recreate — `net_clusters` rescans `/proc/net/dev` every second, so no restart or `install_config.sh` re-run is needed.
 
 ---
 
@@ -250,7 +250,8 @@ gkrellm-dock/
 │   ├── nvidia/                 # GPU NVML charts (based on gkrellm-nvidia, GPL-2.0)
 │   ├── llm_nim/                # NIM/vLLM/SGLang Prometheus scrape panel
 │   ├── cpu_clusters/           # X925 / A725 cluster charts
-│   ├── uma_dram/               # Unified memory (DRAM UMA) readout
+│   ├── net_clusters/           # all container veth* folded into one chart
+│   ├── uma_dram/               # Optional DRAM UMA readout (built, not enabled by default)
 │   └── board_acpi/             # Board ACPI thermal zones
 ├── lib/
 │   ├── cpu_map                 # /proc/cpuinfo → X925/A725 core lists

@@ -7,12 +7,14 @@ PE="$HOME/.gkrellm2/plugin_enable"
 NETDATA="$HOME/.gkrellm2/data/net"
 mkdir -p "$HOME/.gkrellm2/plugins" "$HOME/.gkrellm2/themes" "$NETDATA"
 
-# Plugin load order: nvidia (GB10 header+GPU), LLM NIM, then CPU, DRAM, Board
+# Plugin load order: nvidia (GB10 header+GPU, incl. UMA %), LLM NIM, CPU, Net, Board
+# (uma_dram.so is built/installed but not enabled: its chart + readout duplicated the
+#  UMA % already shown under the GPU charts and cost ~120 px of dock height)
 cat >"$PE" <<'EOF'
 nvidia.so
 llm_nim.so
 cpu_clusters.so
-uma_dram.so
+net_clusters.so
 board_acpi.so
 EOF
 
@@ -37,7 +39,16 @@ LLM_SLOT2_URL=""
 LLM_SLOT2_NAME=""
 LLM_SLOT3_URL=""
 LLM_SLOT3_NAME=""
+
+# Net Clusters: interfaces folded into one chart (container veth by default)
+NETC_PATTERN="^veth"
+NETC_LABEL="Docker"
+
 if [[ -f "$CFG" ]]; then
+  v="$(sed -n 's/^net_clusters pattern //p' "$CFG" | head -n1 || true)"
+  [[ -n "${v:-}" ]] && NETC_PATTERN="$v"
+  v="$(sed -n 's/^net_clusters label //p' "$CFG" | head -n1 || true)"
+  [[ -n "${v:-}" ]] && NETC_LABEL="$v"
   v="$(awk '/^llm_nim url / { print $3; exit }' "$CFG" || true)"
   [[ -n "${v:-}" ]] && LLM_URL="$v"
   v="$(awk '/^llm_nim features / { print $3; exit }' "$CFG" || true)"
@@ -116,8 +127,9 @@ cpu enabled cpu19 0
 cpu show_panel_labels 1
 cpu omit_nice_mode 0
 cpu config_tracking 1
-# Memory: DRAM UMA plugin is the readable readout (GB + %).
-# Stock Mem meter stays off — gb10-blue krells still crush its label.
+# Memory: UMA % is shown in the GPU block (nvidia.so); the optional uma_dram.so
+# readout is not enabled by default. Stock Mem meter stays off — gb10-blue krells
+# still crush its label.
 # Swap: stock meter ON with name label (label_is_data=0).
 meminfo mem_meter 0 0 0
 meminfo swap_meter 1 0
@@ -125,26 +137,19 @@ meminfo swap_chart 0 0
 uptime enable 1
 # Hide unused mail to free vertical space
 mail enable 0 0 0 0
-# Net: physical + docker0 + live container veth; ignore PPP/bridges/tunnels
+# Net: stock monitor only for physical NICs + docker0. Container veth* are
+# folded into ONE chart by plugins/net_clusters.so (no per-container charts,
+# no restart needed when containers are recreated). PPP/bridges/tunnels ignored.
 net timer_enabled 0
 net timer_iface none
 net net_enabled_as_default 0
-net ignore_patterns ^ppp[0-9]+\$|^br-|^virbr|^tun|^tap
+net ignore_patterns ^ppp[0-9]+\$|^br-|^virbr|^tun|^tap|^veth
 net enables docker0 1 1 0
 net enables wlP9s9 1 1 0
 net enables enP7s7 1 1 0
+net_clusters pattern $NETC_PATTERN
+net_clusters label $NETC_LABEL
 EOF
-
-# Append enables for currently UP container veths (name changes on recreate)
-VETH_ENABLED=()
-for path in /sys/class/net/veth*; do
-  [[ -e "$path" ]] || continue
-  iface="$(basename "$path")"
-  oper="$(cat "$path/operstate" 2>/dev/null || echo down)"
-  [[ "$oper" == "up" ]] || continue
-  echo "net enables $iface 1 1 0" >>"$CFG"
-  VETH_ENABLED+=("$iface")
-done
 
 cat >>"$CFG" <<EOF
 # NVML: Temp + UMA% (mask 272); path for GB10
@@ -174,23 +179,11 @@ disk device nvme0n1 0 0 28 0 1 -1 0 nvme0n1
 disk device sda 0 0 45 0 1 -1 0 sda
 EOF
 
-# Drop stale PPP cookies; prune dead veth cookies (keep live ones)
+# Drop stale PPP cookies and every veth cookie (veth is handled by net_clusters)
 rm -f "$NETDATA/ppp0" "$NETDATA/ppp0_disabled"
-for cookie in "$NETDATA"/veth*; do
-  [[ -e "$cookie" ]] || continue
-  name="$(basename "$cookie")"
-  keep=0
-  for live in "${VETH_ENABLED[@]+"${VETH_ENABLED[@]}"}"; do
-    [[ "$name" == "$live" ]] && keep=1 && break
-  done
-  [[ "$keep" -eq 1 ]] || rm -f "$cookie"
-done
+rm -f "$NETDATA"/veth*
 
 echo "wrote $CFG and $PE"
 echo "llm_nim features $LLM_FEATURES (url $LLM_URL)"
-if ((${#VETH_ENABLED[@]})); then
-  echo "container veth enabled: ${VETH_ENABLED[*]}"
-else
-  echo "container veth enabled: (none up)"
-fi
+echo "net_clusters: pattern '$NETC_PATTERN' label '$NETC_LABEL' (replaces per-veth charts)"
 [[ -n "$POS" ]] && echo "startup_position preserved: $POS"

@@ -9,7 +9,7 @@ Managed keys are written by `scripts/install_config.sh` (run by `scripts/install
 ## Plugin load order
 
 ```text
-nvidia.so → llm_nim.so → cpu_clusters.so → uma_dram.so → board_acpi.so
+nvidia.so → llm_nim.so → cpu_clusters.so → net_clusters.so → board_acpi.so   (uma_dram.so: built, not enabled by default — duplicates UMA % in the GPU block)
 ```
 
 ---
@@ -45,13 +45,13 @@ Link **both** `nvidia.o` and `nvml-lib.o`. A partial link produces a plugin that
 
 ---
 
-## `llm_nim.so` — NIM / vLLM (Nemotron)
+## `llm_nim.so` — NIM / vLLM / SGLang / TensorFold (Nemotron)
 
 **Source tree:** `plugins/llm_nim/`.
 
 Compact panel for a local OpenAI-compatible NIM/vLLM server (reference container: `nemotron-nim` serving `nvidia/nemotron-3-super-120b-a12b` on port **8000**). Scrapes `GET /metrics` (Prometheus) and optionally `GET /v1/models` for the header name.
 
-**Metrics backends:** primary vLLM/NIM (`vllm:*` counters + histograms). Secondary SGLang: auto-detected via `sglang:gen_throughput` / `token_usage` / `prompt_tokens_total`; full overlay maps histograms, token counters, spec/HTTP/CPU and approximate RSS from GPU memory gauges. Requires `--enable-metrics`. vLLM-only strips (Dc decode phase, Rn inference, Bt, Xp, engine sleep) stay empty on SGLang.
+**Metrics backends:** primary vLLM/NIM (`vllm:*` counters + histograms). Secondary SGLang: auto-detected via `sglang:gen_throughput` / `token_usage` / `prompt_tokens_total`; full overlay maps histograms, token counters, spec/HTTP/CPU and approximate RSS from GPU memory gauges. Requires `--enable-metrics`. vLLM-only strips (Dc decode phase, Rn inference, Bt, Xp, engine sleep) stay empty on SGLang. Third backend **TensorFold** (engine ≥ 0.6.1): auto-detected via any `tensorfold:` metric family; live token counters, speculative-decode stats and prefill/decode time come from `GET /health`, TFT/E2E fall back to lifetime means. Detection order SGLang → TensorFold → vLLM; strips with no source on a backend stay empty. Details: [LLM_NIM_UI.md](LLM_NIM_UI.md).
 
 ### Settings tab
 
@@ -182,9 +182,40 @@ Two tall charts (~120 px) with **ten equal mini-bands per cluster** (one impulse
 
 ---
 
+## `net_clusters.so` — Docker / veth (folded)
+
+**Source tree:** `plugins/net_clusters/`.
+
+The stock Net monitor draws **one ~60 px chart per interface**; with dozens of containers (one host-side `veth*` each) the dock grows without bound. `net_clusters` folds every interface matching a regex into **one** compact chart, the same idea as `cpu_clusters` does for cores.
+
+| Element | Meaning |
+|---------|---------|
+| Panel title | `Docker` (configurable label) |
+| Top band (cyan) | **in** — bytes/s entering the containers (sum of veth `tx_bytes` Δ) |
+| Bottom band (amber) | **out** — bytes/s leaving the containers (sum of veth `rx_bytes` Δ) |
+| Chart text | `N  ↓in ↑out` — `N` = matching **UP** interfaces, rates summed (`512`, `1.2K`, `34M`, `1.5G`) |
+
+- Source: `/proc/net/dev`, rescanned **every second**, so containers that start, stop or are recreated (new `veth*` names) are picked up **without restarting the dock**.
+- Only interfaces whose `/sys/class/net/<if>/operstate` is `up` (or `unknown`) are folded in and counted; down, `lowerlayerdown` or already-vanished interfaces (Docker creates and drops temporary veths) are skipped. Note `N` counts **interfaces, not containers**: a container attached to several Docker networks owns one veth per network.
+- New interfaces get a baseline sample first (no spike from a delta against 0); counter resets are ignored for that tick.
+- Auto-scaled chart (rates range from bytes/s to hundreds of MB/s).
+- Container-to-container traffic on a Docker bridge is counted once as **out** (sender) and once as **in** (receiver), so on a busy internal network in ≈ out.
+- Physical NICs and `docker0` stay on the stock Net monitor; stock Net ignores `^veth` (see below).
+
+Config keys (written by `install_config.sh`, preserved on re-run):
+
+```text
+net_clusters pattern ^veth      # POSIX extended regex on interface name
+net_clusters label Docker       # panel title
+```
+
+Change `pattern` to fold other interfaces (e.g. `^(veth|br-)`); an invalid regex falls back to `^veth`.
+
+---
+
 ## `uma_dram.so` — DRAM (UMA)
 
-**Source tree:** `plugins/uma_dram/`.
+**Source tree:** `plugins/uma_dram/`. **Optional — not in the default `plugin_enable`** (its chart + readout duplicated the UMA % already shown in the GPU block and cost ~120 px of dock height). Enable by adding `uma_dram.so` after `net_clusters.so` in `~/.gkrellm2/plugin_enable`.
 
 GB10 uses unified memory. The ACPI `DRAM8901` device exposes MMIO only (no usable OS telemetry), so this panel reads:
 
@@ -192,7 +223,7 @@ GB10 uses unified memory. The ACPI `DRAM8901` device exposes MMIO only (no usabl
 - Used ≈ Total − Available  
 - Chart: used %; text: `used/total GB` and `%`
 
-Stock **Mem** meter stays **off** (theme krells crush its label). Stock **Swap** stays **on**.
+Stock **Mem** meter stays **off** (theme krells crush its label); UMA % lives in the GPU block. Stock **Swap** stays **on**.
 
 ---
 
@@ -233,17 +264,19 @@ disk chart_config Disk 40 40000000 5 0 0 1 : …
 
 ```text
 net net_enabled_as_default 0
-net ignore_patterns ^ppp[0-9]+$|^br-|^virbr|^tun|^tap
+net ignore_patterns ^ppp[0-9]+$|^br-|^virbr|^tun|^tap|^veth
 net enables docker0 1 1 0
 net enables wlP9s9 1 1 0
 net enables enP7s7 1 1 0
-net enables <live-veth> 1 1 0   # appended dynamically
+net_clusters pattern ^veth
+net_clusters label Docker
 ```
 
-- **Enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`), `docker0`, and every **UP** `veth*` (host side of running containers).  
-- **Ignored:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap.  
-- Stale `veth*` cookies under `~/.gkrellm2/data/net/` are pruned; live ones kept.  
-- After container recreate, **restart the dock** so the new veth name is enabled.
+- **Stock Net enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`) and `docker0`.  
+- **Container `veth*`:** not shown one by one — folded into a single chart by [`net_clusters.so`](#net_clustersso--docker--veth-folded).  
+- **Ignored:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap, `veth*` (stock monitor only).  
+- All `veth*` cookies under `~/.gkrellm2/data/net/` are removed on install (no per-container state to keep).  
+- Container recreate needs **no restart** — `net_clusters` rescans `/proc/net/dev` every second.
 
 Interface names for Wi‑Fi/Ethernet may differ on some OEM images — edit `install_config.sh` if your NICs are named differently, then reinstall config.
 

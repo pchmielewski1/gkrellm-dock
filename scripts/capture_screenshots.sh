@@ -6,9 +6,12 @@ DOCS="$ROOT/docs"
 DISPLAY_ID="${DISPLAY:-:1}"
 export DISPLAY="$DISPLAY_ID"
 
-WID="$(xwininfo -root -tree 2>/dev/null | awk '/"gkrellm".*[0-9]+x[0-9]+/{
+# Capture the tree first: piping xwininfo straight into an early-exiting awk
+# makes xwininfo die with SIGPIPE, which `set -o pipefail` turns into exit 141.
+TREE="$(xwininfo -root -tree 2>/dev/null || true)"
+WID="$(awk '/"gkrellm".*[0-9]+x[0-9]+/{
   if ($0 ~ /128x/ || $0 ~ /120x/) { print $1; exit }
-}')"
+}' <<<"$TREE")"
 if [[ -z "${WID:-}" ]]; then
   echo "gkrellm window not found on DISPLAY=$DISPLAY_ID" >&2
   exit 1
@@ -39,23 +42,24 @@ pb.savev(str(full), 'png', [], [])
 im = Image.open(full)
 W, H = im.size
 
-# Region crops tuned for current llm_nim-heavy layout (~128×2k).
-# Re-tune Y bounds after large UI changes; see docs/SCREENSHOTS.md.
+# Region crops tuned for the current layout (~128x2.1k): GPU block, LLM NIM
+# (TensorFold/vLLM strips), CPU clusters, stock Proc/Disk/Net, folded Docker
+# chart (net_clusters), Swap, Board. Re-tune Y bounds after large UI changes;
+# see docs/SCREENSHOTS.md.
 regions = {
     'gkrellm-top.png': (0, min(68, H)),
     'gkrellm-gpu.png': (min(68, H), min(295, H)),
     'gkrellm-gpu-zoom.png': (min(100, H), min(270, H)),
-    'gkrellm-llm.png': (min(295, H), min(460, H)),
-    'gkrellm-llm-rows.png': (min(295, H), min(1320, H)),
-    'gkrellm-cpu.png': (min(1320, H), min(1585, H)),
-    'gkrellm-cpu-x925.png': (min(1320, H), min(1465, H)),
-    'gkrellm-cpu-a725.png': (min(1465, H), min(1585, H)),
-    'gkrellm-cpu-zone.png': (min(1320, H), min(1585, H)),
-    'gkrellm-proc-area.png': (min(1585, H), min(1720, H)),
-    'gkrellm-gap-proc.png': (min(1585, H), min(1665, H)),
-    'gkrellm-net.png': (min(1665, H), min(1935, H)),
-    'gkrellm-mem-zoom.png': (min(1910, H), min(2010, H)),
-    'gkrellm-bottom.png': (min(1910, H), H),
+    'gkrellm-llm.png': (min(294, H), min(445, H)),
+    'gkrellm-llm-rows.png': (min(294, H), min(1370, H)),
+    'gkrellm-cpu.png': (min(1372, H), min(1663, H)),
+    'gkrellm-cpu-x925.png': (min(1372, H), min(1512, H)),
+    'gkrellm-cpu-a725.png': (min(1512, H), min(1663, H)),
+    'gkrellm-cpu-zone.png': (min(1372, H), min(1663, H)),
+    'gkrellm-proc-area.png': (min(1663, H), min(1770, H)),
+    'gkrellm-gap-proc.png': (min(1663, H), min(1743, H)),
+    'gkrellm-net.png': (min(1771, H), min(1926, H)),
+    'gkrellm-bottom.png': (min(1927, H), H),
     'gkrellm-slice-top.png': (0, H // 3),
     'gkrellm-slice-mid.png': (H // 3, 2 * H // 3),
     'gkrellm-slice-mid2.png': (2 * H // 3, H),

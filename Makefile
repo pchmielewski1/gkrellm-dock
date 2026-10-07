@@ -32,6 +32,9 @@ plugins/board_acpi/board_acpi.so: plugins/board_acpi/board_acpi.c lib/thermal_ma
 plugins/uma_dram/uma_dram.so: plugins/uma_dram/uma_dram.c
 	$(CC) $(CFLAGS) $(GKCFLAGS) -shared -o $@ plugins/uma_dram/uma_dram.c $(GKLIBS)
 
+plugins/net_clusters/net_clusters.so: plugins/net_clusters/net_clusters.c
+	$(CC) $(CFLAGS) $(GKCFLAGS) -shared -o $@ plugins/net_clusters/net_clusters.c $(GKLIBS)
+
 plugins/llm_nim/llm_nim.so: plugins/llm_nim/llm_nim.c
 	$(CC) $(CFLAGS) $(GKCFLAGS) $(shell pkg-config --cflags libcurl) -shared \
 		-o $@ plugins/llm_nim/llm_nim.c $(GKLIBS) $(shell pkg-config --libs libcurl)
@@ -40,6 +43,7 @@ plugins/nvidia/nvidia.so:
 	$(MAKE) -C plugins/nvidia
 
 plugins: plugins/cpu_clusters/cpu_clusters.so \
+	plugins/net_clusters/net_clusters.so \
 	plugins/board_acpi/board_acpi.so \
 	plugins/uma_dram/uma_dram.so \
 	plugins/llm_nim/llm_nim.so \
@@ -50,6 +54,7 @@ test: plugins
 install: plugins
 	mkdir -p $(PLUGIN_DIR) $(THEME_DIR)
 	install -m755 plugins/cpu_clusters/cpu_clusters.so $(PLUGIN_DIR)/
+	install -m755 plugins/net_clusters/net_clusters.so $(PLUGIN_DIR)/
 	install -m755 plugins/board_acpi/board_acpi.so $(PLUGIN_DIR)/
 	install -m755 plugins/uma_dram/uma_dram.so $(PLUGIN_DIR)/
 	install -m755 plugins/llm_nim/llm_nim.so $(PLUGIN_DIR)/
