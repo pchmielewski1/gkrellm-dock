@@ -727,7 +727,28 @@ static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
 		s->spec_accepted = v;
 	if (json_extract_number(body, "drafted_total", &v) == 0)
 		s->spec_draft = v;
-	/* prefill/decode_seconds_total stay finished-only on current TF — skip. */
+	/*
+	 * Phase seconds + requests_total → fake HistPair so Pf/Dc can show
+	 * lifetime (and window Δ when requests finish). Mid-flight these
+	 * counters grow; count stays put until a request completes.
+	 */
+	{
+		double req = 0, pre = 0, dec = 0;
+
+		if (json_extract_number(body, "requests_total", &req) == 0 &&
+		    req > 0.0) {
+			if (json_extract_number(body, "prefill_seconds_total",
+			                        &pre) == 0) {
+				s->prefill_t.sum = pre;
+				s->prefill_t.count = req;
+			}
+			if (json_extract_number(body, "decode_seconds_total",
+			                        &dec) == 0) {
+				s->decode_t.sum = dec;
+				s->decode_t.count = req;
+			}
+		}
+	}
 
 	free(body);
 }
@@ -858,6 +879,18 @@ static double hist_window_mean(const HistPair *cur, const HistPair *prev)
 	return -1.0;
 }
 
+/* Window Δ when available; else lifetime mean (TF long jobs keep count flat). */
+static double hist_mean_prefer_window(const HistPair *cur, const HistPair *prev)
+{
+	double w = hist_window_mean(cur, prev);
+
+	if (w >= 0.0)
+		return w;
+	if (cur->count > 0.0 && cur->sum >= 0.0)
+		return cur->sum / cur->count;
+	return -1.0;
+}
+
 static double ratio_pct(double num, double den, double prev_num, double prev_den)
 {
 	double dn = num - prev_num;
@@ -978,14 +1011,34 @@ static void derive_from_snap(const MetricsSnap *snap, double dt)
 {
 	long ncpu;
 
-	P.d_ttft = hist_window_mean(&snap->ttft, &P.prev.ttft);
-	P.d_itl = hist_window_mean(&snap->itl, &P.prev.itl);
-	P.d_tpot = hist_window_mean(&snap->tpot, &P.prev.tpot);
-	P.d_e2e = hist_window_mean(&snap->e2e, &P.prev.e2e);
-	P.d_q_wait = hist_window_mean(&snap->q_wait, &P.prev.q_wait);
-	P.d_prefill_t = hist_window_mean(&snap->prefill_t, &P.prev.prefill_t);
-	P.d_decode_t = hist_window_mean(&snap->decode_t, &P.prev.decode_t);
-	P.d_infer_t = hist_window_mean(&snap->infer_t, &P.prev.infer_t);
+	/*
+	 * TensorFold: request histograms often stall mid-flight (finished-only
+	 * count). Prefer window Δ, else show lifetime mean so TFT/E2E/Pf/Dc
+	 * are not stuck on "-".
+	 */
+	if (snap->backend_tensorfold) {
+		P.d_ttft = hist_mean_prefer_window(&snap->ttft, &P.prev.ttft);
+		P.d_e2e = hist_mean_prefer_window(&snap->e2e, &P.prev.e2e);
+		P.d_prefill_t =
+		    hist_mean_prefer_window(&snap->prefill_t, &P.prev.prefill_t);
+		P.d_decode_t =
+		    hist_mean_prefer_window(&snap->decode_t, &P.prev.decode_t);
+		P.d_itl = hist_window_mean(&snap->itl, &P.prev.itl);
+		P.d_tpot = hist_window_mean(&snap->tpot, &P.prev.tpot);
+		P.d_q_wait = hist_window_mean(&snap->q_wait, &P.prev.q_wait);
+		P.d_infer_t = hist_window_mean(&snap->infer_t, &P.prev.infer_t);
+	} else {
+		P.d_ttft = hist_window_mean(&snap->ttft, &P.prev.ttft);
+		P.d_itl = hist_window_mean(&snap->itl, &P.prev.itl);
+		P.d_tpot = hist_window_mean(&snap->tpot, &P.prev.tpot);
+		P.d_e2e = hist_window_mean(&snap->e2e, &P.prev.e2e);
+		P.d_q_wait = hist_window_mean(&snap->q_wait, &P.prev.q_wait);
+		P.d_prefill_t =
+		    hist_window_mean(&snap->prefill_t, &P.prev.prefill_t);
+		P.d_decode_t =
+		    hist_window_mean(&snap->decode_t, &P.prev.decode_t);
+		P.d_infer_t = hist_window_mean(&snap->infer_t, &P.prev.infer_t);
+	}
 	P.d_mean_prompt = hist_window_mean(&snap->mean_prompt, &P.prev.mean_prompt);
 	P.d_mean_gen = hist_window_mean(&snap->mean_gen, &P.prev.mean_gen);
 	P.d_iter_tok = hist_window_mean(&snap->iter_tok, &P.prev.iter_tok);

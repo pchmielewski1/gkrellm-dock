@@ -44,11 +44,12 @@ Still empty on SGLang (no server metric): **Dc** decode phase, **Rn** inference 
 | KV % | mean `tensorfold:kv_cache_usage_perc{stream=…}` | values are 0–1 ratios → ×100 |
 | Queue R/W | `num_requests_running` / `num_requests_waiting` | mirrors of `requests_*`; `/health` overlays running |
 | Spec % | `spec_decode_num_*` or `mtp_*_total` (+ `/health` accepted/drafted) | still finished-request biased mid-flight |
-| TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | E2E falls back to `request_latency_seconds` |
+| TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | window Δ when count moves; else **lifetime** mean (TF long jobs) |
+| Pf / Dc | `/health` `prefill_seconds_total` / `decode_seconds_total` ÷ `requests_total` | same window-then-lifetime rule |
 | Pr | `preemptions_total` | when the CUDA scheduler counts yields |
 | Engine lamp | — | awake when scrape OK |
 
-Still empty on TensorFold: **ITL/TPOT**, **Qw/Pf/Dc/Rn**, **Prefix/Xp/Pc**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. `/health` `prefill_seconds_total` / `decode_seconds_total` are not live mid-request on current TF.
+Still empty on TensorFold: **ITL/TPOT**, **Qw/Rn**, **Prefix/Xp**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. Pc uses `/health` `cached_tokens_total`.
 
 Tab titles below are verbatim from the source. The source pads every notebook tab label with one leading and one trailing space: `" Connection "`, `" Catalog "`, `" Local "`, `" Recipes "`, `" Instances "`, `" Options "`, `" Display "`.
 
