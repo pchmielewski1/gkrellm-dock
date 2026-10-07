@@ -2,7 +2,7 @@
 
 Visual guide to every **Configure → Plugins** screen in this project. Open via right-click the dock → **Configure**, or the GKrellM menu → **Configure**, then select a plugin in the left sidebar.
 
-Plugins **without** a settings tab (`cpu_clusters`, `uma_dram`, `board_acpi`) have fixed behaviour — see [PLUGINS.md](PLUGINS.md).
+Plugins **without** a settings tab (`cpu_clusters`, `net_clusters`, `board_acpi` (and `uma_dram` if you enable it)) have fixed behaviour — see [PLUGINS.md](PLUGINS.md).
 
 Screenshot catalog (including dock panels): [SCREENSHOTS.md](SCREENSHOTS.md).
 

@@ -71,6 +71,13 @@ StylePanel cpu_clusters.label_position = 8
 StylePanel cpu_clusters.margins = 4,4,5,5
 StylePanel cpu_clusters.textcolor = #eaf7fc #050c14 none
 
+# Net Clusters — one folded chart for all container veth interfaces
+StyleChart net_clusters.textcolor = #dff4fc #081220 none
+StyleChart net_clusters.margins = 2,2,2,2
+StylePanel net_clusters.label_position = 8
+StylePanel net_clusters.margins = 4,4,5,5
+StylePanel net_clusters.textcolor = #eaf7fc #050c14 none
+
 # Mem/Swap — taller mem/bg_meter + yoffs so 3 krells don't crush labels
 StyleMeter mem.margins = 4,4,4,4
 StyleMeter mem.krell_yoff = 6

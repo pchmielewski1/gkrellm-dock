@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installer for GKrellM Dock plugins + gb10-blue theme on DGX Spark (GB10).
-# Builds the five GKrellM plugins, installs the theme, and writes the managed
+# Builds the six GKrellM plugins, installs the theme, and writes the managed
 # ~/.gkrellm2 config. Does NOT start gkrellm and does NOT manage autostart —
 # launch and autostart of gkrellm are handled by the host environment.
 set -euo pipefail
@@ -80,7 +80,7 @@ cat <<'EOF'
 
 Install complete.
 
-  Plugins:  ~/.gkrellm2/plugins/  (nvidia, llm_nim, cpu_clusters, uma_dram, board_acpi)
+  Plugins:  ~/.gkrellm2/plugins/  (nvidia, llm_nim, cpu_clusters, net_clusters, board_acpi; uma_dram.so installed but not enabled)
   Theme:    ~/.gkrellm2/themes/gb10-blue/
   Config:   ~/.gkrellm2/user-config  (managed by scripts/install_config.sh)
 

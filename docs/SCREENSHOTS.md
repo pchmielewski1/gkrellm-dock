@@ -42,15 +42,16 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 | [`gkrellm-cpu-zone.png`](gkrellm-cpu-zone.png) | Same as `gkrellm-cpu.png` (alias crop for older docs) |
 | [`gkrellm-proc-area.png`](gkrellm-proc-area.png) | Process/user counts and Proc meter |
 | [`gkrellm-gap-proc.png`](gkrellm-gap-proc.png) | Short crop around the Proc gap |
-| [`gkrellm-net.png`](gkrellm-net.png) | Disk + net (`docker0`, container `veth*`, Wi‑Fi/Ethernet) |
-| [`gkrellm-mem-zoom.png`](gkrellm-mem-zoom.png) | DRAM UMA used/total GB + % (and start of Swap) |
-| [`gkrellm-bottom.png`](gkrellm-bottom.png) | DRAM UMA, Swap, Board thermals, Uptime |
+| [`gkrellm-net.png`](gkrellm-net.png) | Disk + stock net meter(s) (Wi‑Fi/Ethernet; `docker0` while up) + the folded **Docker** chart from `net_clusters` (all UP container `veth*`: `N ↓in ↑out`, cyan top band = in, amber bottom band = out) |
+| [`gkrellm-bottom.png`](gkrellm-bottom.png) | Swap, Board thermals (TSOC…TUNC), Uptime |
 | [`gkrellm-slice-top.png`](gkrellm-slice-top.png) | Top third of the full dock |
 | [`gkrellm-slice-mid.png`](gkrellm-slice-mid.png) | Middle third |
 | [`gkrellm-slice-mid2.png`](gkrellm-slice-mid2.png) | Lower third |
 
 ## Notes
 
-- Crop Y bounds assume a tall layout with many LLM Display bits enabled. After changing which metrics are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
+- Crop Y bounds assume the current layout (~2.1k px tall: GPU, LLM NIM with many Display bits, CPU clusters, Proc/Disk/Net, folded Docker chart, Swap, Board; `uma_dram.so` not enabled). After changing which metrics or plugins are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
+- The dock must fit on screen for the capture (a 4K display fits it at ~2.1k px); the script reads the window straight from the X root window.
+- `gkrellm-mem-zoom.png` was removed together with the default DRAM UMA panel; UMA % is the last row of the GPU block (`gkrellm-gpu.png`).
 - Engine status is the green/yellow/red/gray lamp on the **Nemotron** header row (right), not a separate Eng tile.
 - **`in` / `out`** under the header are session Prefill / Decode token totals for the current GKrellM dock process (see [PLUGINS.md](PLUGINS.md) · LLM NIM).

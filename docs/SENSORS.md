@@ -55,7 +55,7 @@ NVIDIA has not published a full public datasheet mapping every zone to a physica
 |-------|--------|-------------------|
 | `nvidia` text row | NVML GPU temperature | Die/sensor from the driver; compare with **TGPU** / **TSOC** |
 | `nvidia` text row | UMA % | Memory pressure, not temperature |
-| `uma_dram` | Used DRAM | Load that often drives TSOC up even when GPU util looks modest |
+| `uma_dram` (optional, off by default) | Used DRAM | Load that often drives TSOC up even when GPU util looks modest |
 
 ## Operational tips
 

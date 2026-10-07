@@ -6,13 +6,13 @@ Exact reference for every GKrellM plugin/panel in the DGX Spark GB10 dock and ev
 
 ## Plugin load order
 
-Five `.so` files, listed top-to-bottom in `~/.gkrellm2/plugin_enable` (written by `scripts/install_config.sh`):
+Six `.so` files are built; the enabled ones are listed top-to-bottom in `~/.gkrellm2/plugin_enable` (written by `scripts/install_config.sh`):
 
 ```text
-nvidia.so → llm_nim.so → cpu_clusters.so → uma_dram.so → board_acpi.so
+nvidia.so → llm_nim.so → cpu_clusters.so → net_clusters.so → board_acpi.so   (uma_dram.so: built, not enabled by default — duplicates UMA % in the GPU block)
 ```
 
-Panel anchors (where each plugin lands in the monitor stack): `nvidia` — after clock/hostname (`MON_CLOCK | MON_INSERT_AFTER`); `uma_dram` — memory area (`MON_MEM`); `board_acpi` — memory area, inserted after (`MON_MEM | MON_INSERT_AFTER`); `cpu_clusters` — process/CPU area (`MON_PROC`).
+Panel anchors (where each plugin lands in the monitor stack): `nvidia` — after clock/hostname (`MON_CLOCK | MON_INSERT_AFTER`); `uma_dram` — memory area (`MON_MEM`); `board_acpi` — memory area, inserted after (`MON_MEM | MON_INSERT_AFTER`); `cpu_clusters` — process/CPU area (`MON_PROC`); `net_clusters` — right after the stock Net block (`MON_NET | MON_INSERT_AFTER`).
 
 ---
 
@@ -70,9 +70,9 @@ Managed install enables Load, Clock, Power, Temp, UMA (mask `272`). Fan and memo
 
 **Build pitfall:** link **both** `nvidia.o` and `nvml-lib.o`. A partial link produces a plugin that loads with an empty GPU block. Prefer `make -C plugins/nvidia clean && make -C plugins/nvidia`.
 
-### `llm_nim.so` — NIM / vLLM / SGLang
+### `llm_nim.so` — NIM / vLLM / SGLang / TensorFold
 
-Compact dock panel for a local OpenAI-compatible inference server (reference: NIM/vLLM container on port **8000**, or SGLang with `--enable-metrics`). Scrapes `GET /metrics` (Prometheus) and optionally `GET /v1/models` for the header name. **vLLM/NIM:** primary `vllm:*` counters and histograms. **SGLang:** auto-detected via `sglang:gen_throughput`, `sglang:token_usage`, or `sglang:prompt_tokens_total`; full overlay maps histograms, token counters, spec/HTTP/CPU and approximate RSS (see `docs/LLM_NIM_UI.md` → Metrics backends). Without `--enable-metrics`, `/metrics` 404s → `down`. vLLM-only strips (**Dc**, **Rn**, **Bt**, **Xp**, engine sleep states) stay empty on SGLang. Shows a header + engine status lamp, session `in`/`out` token totals (Σ Δ of prompt/generation token counters, this GKrellM process only), and per-feature strips/charts selected by the `features` bitmask (managed default `1908735`; core-only `15`). Up to 4 scrape slots (slot 0 full panel; slots 1–3 compact). Has its own settings notebook (Connection / Catalog / Local / Recipes / Instances / Options / Display); full reference: `docs/LLM_NIM_UI.md`. Managed defaults: `url http://127.0.0.1:8000`, `docs_release 2.0.10`, `airgap 0`, `chart_max_tps 50`, `chart_max_prefill 1000`, `timeout_ms 500` — preserved across config re-apply if already present in `user-config`. Offline → dashes / down, charts at zero; depends on libcurl.
+Compact dock panel for a local OpenAI-compatible inference server (reference: NIM/vLLM container on port **8000**, or SGLang with `--enable-metrics`). Scrapes `GET /metrics` (Prometheus) and optionally `GET /v1/models` for the header name. **vLLM/NIM:** primary `vllm:*` counters and histograms. **SGLang:** auto-detected via `sglang:gen_throughput`, `sglang:token_usage`, or `sglang:prompt_tokens_total`; full overlay maps histograms, token counters, spec/HTTP/CPU and approximate RSS (see `docs/LLM_NIM_UI.md` → Metrics backends). Without `--enable-metrics`, `/metrics` 404s → `down`. vLLM-only strips (**Dc**, **Rn**, **Bt**, **Xp**, engine sleep states) stay empty on SGLang. **TensorFold** (engine ≥ 0.6.1) is auto-detected via any `tensorfold:` family, with live token counters/speculative stats from `GET /health` (detection order SGLang → TensorFold → vLLM). Shows a header + engine status lamp, session `in`/`out` token totals (Σ Δ of prompt/generation token counters, this GKrellM process only), and per-feature strips/charts selected by the `features` bitmask (managed default `1908735`; core-only `15`). Up to 4 scrape slots (slot 0 full panel; slots 1–3 compact). Has its own settings notebook (Connection / Catalog / Local / Recipes / Instances / Options / Display); full reference: `docs/LLM_NIM_UI.md`. Managed defaults: `url http://127.0.0.1:8000`, `docs_release 2.0.10`, `airgap 0`, `chart_max_tps 50`, `chart_max_prefill 1000`, `timeout_ms 500` — preserved across config re-apply if already present in `user-config`. Offline → dashes / down, charts at zero; depends on libcurl.
 
 ### `cpu_clusters.so` — X925 / A725
 
@@ -89,9 +89,13 @@ Fallback lists apply if part IDs are missing. ACPI `CLU0`/`CLU1` groupings are *
 
 Two tall charts (**120 px**, label `CPU X925` / `CPU A725`) with one equal impulse mini-band per core (warm amber shade ramp, one per core index) on a fixed 0–100 % scale per band, from `/proc/stat` (`/proc/stat` busy/idle via `lib/cpu_stat.c`, one tick per GKrellM second). Panel label + krell show the **cluster average** busy % across all its cores. Stock composite `cpu` is disabled in managed config so it does not duplicate these panels. No `user-config` keys, no settings tab.
 
+### `net_clusters.so` — Docker / veth (folded)
+
+**Source tree:** `plugins/net_clusters/`. Reads `/proc/net/dev` every second and folds all interfaces matching `net_clusters pattern` (default `^veth`) into **one** chart with two bands: **in** (top, cyan; veth `tx_bytes` Δ = into containers) and **out** (bottom, amber; veth `rx_bytes` Δ = out of containers). Only `operstate` up/unknown interfaces are folded in and counted; `N` is the number of such interfaces (one veth per container per Docker network), not containers. Chart text is `N  ↓in ↑out`. Replaces dozens of per-container stock Net charts and needs no restart when containers are recreated. Keys: `net_clusters pattern <regex>`, `net_clusters label <title>`. Details: [PLUGINS.md](PLUGINS.md#net_clustersso--docker--veth-folded).
+
 ### `uma_dram.so` — DRAM (UMA)
 
-**Source tree:** `plugins/uma_dram/`. GB10 uses unified memory; the ACPI `DRAM8901` device exposes MMIO only (no usable OS telemetry), so the panel reads `MemTotal` / `MemAvailable` from `/proc/meminfo`: used ≈ Total − Available (available clamped to total).
+**Source tree:** `plugins/uma_dram/`. **Optional, not in the default `plugin_enable`** (duplicated the GPU block's UMA %). GB10 uses unified memory; the ACPI `DRAM8901` device exposes MMIO only (no usable OS telemetry), so the panel reads `MemTotal` / `MemAvailable` from `/proc/meminfo`: used ≈ Total − Available (available clamped to total).
 
 - Panel `"DRAM UMA"` with krell, full scale 100.
 - Chart: **used %** on fixed 0–100 % scale (2 grids × 50), LINE style, 40 px; text overlay `%lu%%`.
@@ -124,7 +128,7 @@ Discovery: `/sys/class/thermal/thermal_zone*/temp` + ACPI short name from the zo
 | Hostname | **On, full** (`enable_hostname 1`, `hostname_short 0`) |
 | Sysname | Off (`enable_sysname 0`) |
 | Composite CPU + all per-core | **Off** (`cpu enabled cpu 0`, `cpu enabled cpu0`–`cpu19 0`) — replaced by `cpu_clusters.so` |
-| Mem meter | **Off** (`meminfo mem_meter 0 0 0`) — replaced by `uma_dram.so` (theme krells crush its label) |
+| Mem meter | **Off** (`meminfo mem_meter 0 0 0`) — UMA % is in the GPU block (optional `uma_dram.so` not enabled; theme krells crush the stock label) |
 | Swap | **On** as meter with name label (`meminfo swap_meter 1 0`, chart off: `swap_chart 0 0`) |
 | Mail | **Off** (`mail enable 0 0 0 0`) — frees vertical space |
 | Uptime | **On** (`uptime enable 1`) |
@@ -148,17 +152,19 @@ disk device sda 0 0 45 0 1 -1 0 sda
 net timer_enabled 0
 net timer_iface none
 net net_enabled_as_default 0
-net ignore_patterns ^ppp[0-9]+$|^br-|^virbr|^tun|^tap
+net ignore_patterns ^ppp[0-9]+$|^br-|^virbr|^tun|^tap|^veth
 net enables docker0 1 1 0
 net enables wlP9s9 1 1 0
 net enables enP7s7 1 1 0
-net enables <live-veth> 1 1 0   # appended dynamically for every UP veth*
+net_clusters pattern ^veth
+net_clusters label Docker
 ```
 
-- **Enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`), `docker0`, and every **UP** `veth*` (host side of running containers) — names read live from `/sys/class/net/veth*/operstate` at install time.
-- **Ignored:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap.
-- Stale `veth*` cookies under `~/.gkrellm2/data/net/` are pruned; live ones kept. `ppp0` / `ppp0_disabled` cookies are dropped.
-- After **recreating a container, restart the dock** so the new veth name gets enabled.
+- **Stock Net enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`) and `docker0`.
+- **Container `veth*`:** folded into one chart by `net_clusters.so` (no per-container `net enables` lines any more).
+- **Ignored by stock Net:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap, `veth*`.
+- All `veth*` cookies under `~/.gkrellm2/data/net/` are removed on install; `ppp0` / `ppp0_disabled` cookies are dropped.
+- Container recreate needs **no restart** — `net_clusters` rescans `/proc/net/dev` every second.
 - Wi‑Fi/Ethernet NIC names may differ on some OEM images — edit `install_config.sh` if yours do, then reinstall config.
 
 ---
@@ -204,7 +210,7 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 
 | Key | Value | Meaning |
 |-----|-------|---------|
-| `meminfo mem_meter` | `0 0 0` | Stock Mem meter off (`uma_dram.so` is the readout) |
+| `meminfo mem_meter` | `0 0 0` | Stock Mem meter off (UMA % is shown by `nvidia.so`) |
 | `meminfo swap_meter` | `1 0` | Stock Swap meter **on** with name label |
 | `meminfo swap_chart` | `0 0` | Swap chart off |
 | `uptime enable` | `1` | Uptime panel on |
@@ -217,11 +223,12 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 | `net timer_enabled` | `0` | No net timer |
 | `net timer_iface` | `none` | — |
 | `net net_enabled_as_default` | `0` | Don't auto-enable discovered interfaces |
-| `net ignore_patterns` | `^ppp[0-9]+$\|^br-\|^virbr\|^tun\|^tap` | Skip PPP / compose bridges / virbr / tun / tap |
+| `net ignore_patterns` | `^ppp[0-9]+$\|^br-\|^virbr\|^tun\|^tap\|^veth` | Skip PPP / compose bridges / virbr / tun / tap / veth (veth handled by `net_clusters`) |
 | `net enables docker0` | `1 1 0` | Docker bridge enabled |
 | `net enables wlP9s9` | `1 1 0` | Wi-Fi NIC enabled |
 | `net enables enP7s7` | `1 1 0` | Ethernet NIC enabled |
-| `net enables <veth>` | `1 1 0` | One line per **UP** container veth, appended at install time |
+| `net_clusters pattern` | `^veth` | POSIX extended regex of interfaces folded into the Docker chart (preserved on re-install) |
+| `net_clusters label` | `Docker` | Title of the folded chart panel (preserved on re-install) |
 
 ### Disk block
 
@@ -255,7 +262,7 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 | `llm_nim chart_max_prefill` | `1000` | Prefill chart base scale (t/s) |
 | `llm_nim timeout_ms` | `500` | HTTP scrape timeout (ms) |
 
-Separate file `~/.gkrellm2/plugin_enable` holds the five load-order lines (see [Plugin load order](#plugin-load-order)).
+Separate file `~/.gkrellm2/plugin_enable` holds the five load-order lines (`uma_dram.so` omitted by default) (see [Plugin load order](#plugin-load-order)).
 
 ---
 
@@ -263,11 +270,11 @@ Separate file `~/.gkrellm2/plugin_enable` holds the five load-order lines (see [
 
 | Path | Contents |
 |------|----------|
-| `~/.gkrellm2/plugins/` | The five plugin `.so` files |
+| `~/.gkrellm2/plugins/` | The six plugin `.so` files (five enabled by default) |
 | `~/.gkrellm2/themes/gb10-blue/` | Dock theme (pass to gkrellm as `-t ~/.gkrellm2/themes/gb10-blue`) |
 | `~/.gkrellm2/user-config` | Managed GKrellM user config (all keys above) |
 | `~/.gkrellm2/plugin_enable` | Plugin load order (5 lines) |
-| `~/.gkrellm2/data/` | Runtime data: `startup_position` (GKrellM window `x y`, kept when `save_position 1`), `net/` per-interface cookies (`veth*` pruned on install, `ppp0*` dropped) |
+| `~/.gkrellm2/data/` | Runtime data: `startup_position` (GKrellM window `x y`, kept when `save_position 1`), `net/` per-interface cookies (`veth*` and `ppp0*` removed on install) |
 | `~/.config/gkrellm-dock/` | Optional: NIM token secret files (`ngc_api_key`, `hf_token`) written by the LLM NIM Connection tab when the helper is missing |
 
 Starting the dock: `gkrellm -t ~/.gkrellm2/themes/gb10-blue`. Window placement / login autostart is handled by the host environment, not this repository.
