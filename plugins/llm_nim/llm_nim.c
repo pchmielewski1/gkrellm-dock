@@ -127,6 +127,9 @@ typedef struct {
 	HistPair ttft, itl, tpot, e2e, q_wait, prefill_t, decode_t, infer_t;
 	HistPair mean_prompt, mean_gen, iter_tok;
 	double sglang_gen_tps;
+	/* TensorFold /health live.decode_tokens_per_second (engine's own rate) */
+	double tf_live_decode_tps;
+	int tf_live_ok;
 	int backend_sglang;
 	int backend_tensorfold;
 	int ok;
@@ -701,7 +704,8 @@ static int json_extract_number(const char *json, const char *key, double *out)
 
 /*
  * TensorFold /metrics token counters are finished-request only (HELP text).
- * Live Dec/Pre need /health: completion_tokens_total grows during decode.
+ * Live Dec/Pre need /health: completion_tokens_total grows during decode
+ * (Python engine) or live.decode_tokens_per_second (Zig engine).
  */
 static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
 {
@@ -715,6 +719,18 @@ static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
 	if (http_get(url, &body) != 0 || !body)
 		return;
 
+	/*
+	 * Zig engine (recipe 1.0.0): /health dropped the live token counters
+	 * and reports an instantaneous rate under "live" instead. Used for the
+	 * Dec strip/chart; session totals keep the metrics-based counter.
+	 */
+	if (json_extract_number(body, "decode_tokens_per_second", &v) == 0 &&
+	    v >= 0.0) {
+		s->tf_live_decode_tps = v;
+		s->tf_live_ok = 1;
+	}
+
+	/* Python engine (<= 0.6.x): live counters in /health. */
 	if (json_extract_number(body, "completion_tokens_total", &v) == 0)
 		s->gen_tokens = v;
 	if (json_extract_number(body, "prompt_tokens_total", &v) == 0)
@@ -768,6 +784,16 @@ static void fetch_tensorfold_metrics(const char *base_url, const char *body,
 	s->backend_sglang = 0;
 
 	metric_double(body, "tensorfold:generation_tokens_total", &s->gen_tokens);
+	/*
+	 * Zig engine (recipe 1.0.0): generation_tokens_total only moves when a
+	 * request finishes, but generation_tokens_running holds the tokens of
+	 * the live streams. total + running is continuous across a request's
+	 * end (verified: Δ over a 700-token reply == 700), so Dec/out follow
+	 * decode in real time instead of a single spike per request.
+	 */
+	if (metric_double(body, "tensorfold:generation_tokens_running", &v) == 0 &&
+	    v > 0.0)
+		s->gen_tokens += v;
 	metric_double(body, "tensorfold:prompt_tokens_total", &s->prompt_tokens);
 	metric_double(body, "tensorfold:num_requests_running", &s->running);
 	if (s->running == 0.0)
@@ -797,6 +823,18 @@ static void fetch_tensorfold_metrics(const char *base_url, const char *body,
 	hist_load(body, "tensorfold:e2e_request_latency_seconds", &s->e2e);
 	if (s->e2e.count <= 0.0)
 		hist_load(body, "tensorfold:request_latency_seconds", &s->e2e);
+
+	/* Zig engine exports phase and per-token histograms on /metrics. */
+	hist_load(body, "tensorfold:request_prefill_time_seconds", &s->prefill_t);
+	if (s->prefill_t.count <= 0.0)
+		hist_load(body, "tensorfold:request_prefill_seconds",
+		          &s->prefill_t);
+	hist_load(body, "tensorfold:request_decode_time_seconds", &s->decode_t);
+	if (s->decode_t.count <= 0.0)
+		hist_load(body, "tensorfold:request_decode_seconds",
+		          &s->decode_t);
+	hist_load(body, "tensorfold:request_time_per_output_token_seconds",
+	          &s->tpot);
 
 	s->engine_awake = 1.0;
 
@@ -986,6 +1024,8 @@ static double decode_tps_from_snap(const MetricsSnap *snap,
 {
 	if (snap->backend_sglang && snap->sglang_gen_tps >= 0.0)
 		return snap->sglang_gen_tps;
+	if (snap->backend_tensorfold && snap->tf_live_ok)
+		return snap->tf_live_decode_tps;
 	if (prev && snap->gen_tokens >= prev->gen_tokens && dt > 0.0)
 		return (snap->gen_tokens - prev->gen_tokens) / dt;
 	return 0.0;

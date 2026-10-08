@@ -136,7 +136,7 @@ Six plugins are built and installed by `scripts/install.sh` / `make install`:
 | Plugin | Panel | Data source |
 |--------|-------|-------------|
 | `nvidia.so` | NVIDIA GB10: Load, Clock, Power, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
-| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for Dec/Pre token counters |
+| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for the Dec rate (Zig engine: `live.decode_tokens_per_second`; Python engine: token counters) |
 | `cpu_clusters.so` | CPU X925 / CPU A725 | `/proc/cpuinfo` + `/proc/stat` |
 | `net_clusters.so` | Docker — one chart (in/out bands) for **all** `veth*` interfaces, any number of containers | `/proc/net/dev` (rescanned every second) |
 | `uma_dram.so` | DRAM UMA (built/installed, **not enabled** by default — duplicates the GPU block's UMA %) | `/proc/meminfo` |

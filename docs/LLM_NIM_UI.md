@@ -38,18 +38,23 @@ Tertiary: **TensorFold** — auto-detected when `/metrics` contains any `tensorf
 
 Still empty on SGLang (no server metric): **Dc** decode phase, **Rn** inference phase, **Bt** tokens/step, **Xp** external prefix, engine sleep states (w1/w2).
 
-| Dock field | TensorFold metric | Note |
+TensorFold ships two engines behind the same `tensorfold:` metric names; the plugin handles both without configuration.
+
+| Dock field | TensorFold source | Note |
 |---|---|---|
-| Dec / Pre / in / out | Δ `/health` `completion_tokens_total` / `prompt_tokens_total` | `/metrics` `*_tokens_total` are **finished requests only** — live Dec uses `/health` |
-| KV % | mean `tensorfold:kv_cache_usage_perc{stream=…}` | values are 0–1 ratios → ×100 |
-| Queue R/W | `num_requests_running` / `num_requests_waiting` | mirrors of `requests_*`; `/health` overlays running |
-| Spec % | `spec_decode_num_*` or `mtp_*_total` (+ `/health` accepted/drafted) | still finished-request biased mid-flight |
-| TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | window Δ when count moves; else **lifetime** mean (TF long jobs) |
-| Pf / Dc | `/health` `prefill_seconds_total` / `decode_seconds_total` ÷ `requests_total` | same window-then-lifetime rule |
-| Pr | `preemptions_total` | when the CUDA scheduler counts yields |
+| Dec (t/s) | **Zig engine (recipe ≥ 1.0.0):** `/health` `live.decode_tokens_per_second`; **Python engine (≤ 0.6.x):** Δ `/health` `completion_tokens_total` | `/metrics` `*_tokens_total` are **finished requests only**, so Dec needs the live rate from `/health` |
+| out (session) | Δ (`generation_tokens_total` + `generation_tokens_running`) | the live streams' tokens are added so the total is continuous across a request's end (Python engine: `/health` counter) |
+| Pre (t/s) / in | Δ `prompt_tokens_total` | **no live prefill signal on the Zig engine** (`live.prefill_tokens_per_second` stays 0 while a prompt is absorbed and `prompt_tokens_total` moves when the request finishes), so Pre/in show one step per request, like vLLM; the Python engine's `/health` `prompt_tokens_total` was live |
+| KV % | mean `tensorfold:kv_cache_usage_perc{stream=…}` (or `kv_cache_usage_ratio{pool=…}`) | values are 0–1 ratios → ×100; only active streams are listed |
+| Queue R/W | `num_requests_running` / `num_requests_waiting` (or `requests_*`) | |
+| Spec % | `spec_decode_num_*` or `mtp_*_total` | finished-request biased mid-flight |
+| TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | window Δ when count moves; else **lifetime** mean |
+| Pf / Dc | Zig: `request_prefill_time_seconds` / `request_decode_time_seconds` histograms; Python: `/health` `prefill_seconds_total` / `decode_seconds_total` ÷ `requests_total` | same window-then-lifetime rule |
+| TP | `request_time_per_output_token_seconds` | Zig engine only |
+| Pr | `preemptions_total` | when the scheduler counts yields |
 | Engine lamp | — | awake when scrape OK |
 
-Still empty on TensorFold: **ITL/TPOT**, **Qw/Rn**, **Prefix/Xp**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. Pc uses `/health` `cached_tokens_total`.
+Still empty on TensorFold: **ITL**, **Qw/Rn**, **Prefix/Xp**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. **Pc** (prompt cache %) only has a source on the Python engine (`/health` `cached_tokens_total`); the Zig engine exports no cached-token counter.
 
 Tab titles below are verbatim from the source. The source pads every notebook tab label with one leading and one trailing space: `" Connection "`, `" Catalog "`, `" Local "`, `" Recipes "`, `" Instances "`, `" Options "`, `" Display "`.
 
