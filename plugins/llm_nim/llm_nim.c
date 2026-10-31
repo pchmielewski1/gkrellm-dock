@@ -127,9 +127,11 @@ typedef struct {
 	HistPair ttft, itl, tpot, e2e, q_wait, prefill_t, decode_t, infer_t;
 	HistPair mean_prompt, mean_gen, iter_tok;
 	double sglang_gen_tps;
-	/* TensorFold /health live.decode_tokens_per_second (engine's own rate) */
+	/* TensorFold /health live.*_tokens_per_second (engine's own rates) */
 	double tf_live_decode_tps;
+	double tf_live_prefill_tps;
 	int tf_live_ok;
+	int tf_live_prefill_ok;
 	int backend_sglang;
 	int backend_tensorfold;
 	int ok;
@@ -704,8 +706,9 @@ static int json_extract_number(const char *json, const char *key, double *out)
 
 /*
  * TensorFold /metrics token counters are finished-request only (HELP text).
- * Live Dec/Pre need /health: completion_tokens_total grows during decode
- * (Python engine) or live.decode_tokens_per_second (Zig engine).
+ * Live Dec needs /health: completion_tokens_total (Python) or
+ * live.decode_tokens_per_second (Zig). live.prefill_tokens_per_second exists
+ * but is an end-of-prefill rate (one spike before decode), not mid-flight.
  */
 static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
 {
@@ -720,14 +723,20 @@ static void overlay_tensorfold_health(const char *base_url, MetricsSnap *s)
 		return;
 
 	/*
-	 * Zig engine (recipe 1.0.0): /health dropped the live token counters
-	 * and reports an instantaneous rate under "live" instead. Used for the
-	 * Dec strip/chart; session totals keep the metrics-based counter.
+	 * Zig engine (recipe 1.0.0+): /health reports rates under "live".
+	 * decode_tokens_per_second updates during decode (true live).
+	 * prefill_tokens_per_second is published when prefill completes — useful
+	 * for the Pre strip's end spike, not progressive absorption.
 	 */
 	if (json_extract_number(body, "decode_tokens_per_second", &v) == 0 &&
 	    v >= 0.0) {
 		s->tf_live_decode_tps = v;
 		s->tf_live_ok = 1;
+	}
+	if (json_extract_number(body, "prefill_tokens_per_second", &v) == 0 &&
+	    v >= 0.0) {
+		s->tf_live_prefill_tps = v;
+		s->tf_live_prefill_ok = 1;
 	}
 
 	/* Python engine (<= 0.6.x): live counters in /health. */
@@ -819,6 +828,20 @@ static void fetch_tensorfold_metrics(const char *base_url, const char *body,
 
 	metric_double(body, "tensorfold:preemptions_total", &s->preempt);
 
+	/*
+	 * Prompt-cache mirrors (Flash-Next keeps prompt states unless
+	 * --prompt-cache-gib 0). Same semantics as vLLM prefix / Pc strips.
+	 */
+	metric_double(body, "tensorfold:prompt_tokens_cached_total",
+	              &s->prompt_cached);
+	metric_double(body, "tensorfold:prefix_cache_hits_total",
+	              &s->prefix_hits);
+	metric_double(body, "tensorfold:prefix_cache_queries_total",
+	              &s->prefix_queries);
+
+	/* GPU device footprint (not process RSS) — best available host size. */
+	metric_double(body, "tensorfold:device_memory_bytes", &s->rss_bytes);
+
 	hist_load(body, "tensorfold:time_to_first_token_seconds", &s->ttft);
 	hist_load(body, "tensorfold:e2e_request_latency_seconds", &s->e2e);
 	if (s->e2e.count <= 0.0)
@@ -835,6 +858,15 @@ static void fetch_tensorfold_metrics(const char *base_url, const char *body,
 		          &s->decode_t);
 	hist_load(body, "tensorfold:request_time_per_output_token_seconds",
 	          &s->tpot);
+
+	/*
+	 * No request_success_total on TensorFold — use finished-request hist
+	 * count so Req/s can advance when requests complete.
+	 */
+	if (s->e2e.count > 0.0)
+		s->success = s->e2e.count;
+	else if (s->ttft.count > 0.0)
+		s->success = s->ttft.count;
 
 	s->engine_awake = 1.0;
 
@@ -1028,6 +1060,17 @@ static double decode_tps_from_snap(const MetricsSnap *snap,
 		return snap->tf_live_decode_tps;
 	if (prev && snap->gen_tokens >= prev->gen_tokens && dt > 0.0)
 		return (snap->gen_tokens - prev->gen_tokens) / dt;
+	return 0.0;
+}
+
+/* Prefill t/s: TensorFold end-of-prefill rate from /health when present; else Δ prompt. */
+static double prefill_tps_from_snap(const MetricsSnap *snap,
+                                    const MetricsSnap *prev, double dt)
+{
+	if (snap->backend_tensorfold && snap->tf_live_prefill_ok)
+		return snap->tf_live_prefill_tps;
+	if (prev && snap->prompt_tokens >= prev->prompt_tokens && dt > 0.0)
+		return (snap->prompt_tokens - prev->prompt_tokens) / dt;
 	return 0.0;
 }
 
@@ -1765,12 +1808,7 @@ static void update_plugin(void)
 			if (dt < 0.2)
 				dt = 0.2;
 			P.tps_decode = decode_tps_from_snap(&snap, &P.prev, dt);
-			if (snap.prompt_tokens >= P.prev.prompt_tokens)
-				P.tps_prefill =
-				    (snap.prompt_tokens - P.prev.prompt_tokens) /
-				    dt;
-			else
-				P.tps_prefill = 0;
+			P.tps_prefill = prefill_tps_from_snap(&snap, &P.prev, dt);
 			derive_from_snap(&snap, dt);
 		} else {
 			P.tps_decode = P.tps_prefill = 0;
@@ -1938,12 +1976,7 @@ static void update_compact_slot(int idx)
 			if (dt < 0.2)
 				dt = 0.2;
 			s->tps_decode = decode_tps_from_snap(&snap, &s->prev, dt);
-			if (snap.prompt_tokens >= s->prev.prompt_tokens)
-				s->tps_prefill =
-				    (snap.prompt_tokens - s->prev.prompt_tokens) /
-				    dt;
-			else
-				s->tps_prefill = 0;
+			s->tps_prefill = prefill_tps_from_snap(&snap, &s->prev, dt);
 		} else {
 			s->tps_decode = s->tps_prefill = 0;
 		}

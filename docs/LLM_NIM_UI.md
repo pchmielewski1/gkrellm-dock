@@ -44,17 +44,21 @@ TensorFold ships two engines behind the same `tensorfold:` metric names; the plu
 |---|---|---|
 | Dec (t/s) | **Zig engine (recipe ≥ 1.0.0):** `/health` `live.decode_tokens_per_second`; **Python engine (≤ 0.6.x):** Δ `/health` `completion_tokens_total` | `/metrics` `*_tokens_total` are **finished requests only**, so Dec needs the live rate from `/health` |
 | out (session) | Δ (`generation_tokens_total` + `generation_tokens_running`) | the live streams' tokens are added so the total is continuous across a request's end (Python engine: `/health` counter) |
-| Pre (t/s) / in | Δ `prompt_tokens_total` | **no live prefill signal on the Zig engine** (`live.prefill_tokens_per_second` stays 0 while a prompt is absorbed and `prompt_tokens_total` moves when the request finishes), so Pre/in show one step per request, like vLLM; the Python engine's `/health` `prompt_tokens_total` was live |
+| Pre (t/s) | `/health` `live.prefill_tokens_per_second` (else Δ `prompt_tokens_total`) | **Not mid-flight live.** Despite the `live.` name, Zig publishes this only when prefill **finishes** (one spike of completed tok/s just before decode). Polled at 50–100 ms over 19–77 s prefills: value stays `0` the whole absorption, then jumps once. There is no `prompt_tokens_running` / progressive fill gauge on `/metrics` either |
+| in (session) | Δ `prompt_tokens_total` | finished-request only (one jump when the request completes) |
 | KV % | mean `tensorfold:kv_cache_usage_perc{stream=…}` (or `kv_cache_usage_ratio{pool=…}`) | values are 0–1 ratios → ×100; only active streams are listed |
 | Queue R/W | `num_requests_running` / `num_requests_waiting` (or `requests_*`) | |
 | Spec % | `spec_decode_num_*` or `mtp_*_total` | finished-request biased mid-flight |
+| Px / Pc | `prefix_cache_hits_total` / `prefix_cache_queries_total`; `prompt_tokens_cached_total` / `prompt_tokens_total` | when the engine keeps prompt states (Flash-Next default) |
+| Req/s | Δ E2E (or TTFT) histogram `_count` | no `request_success_total`; finished-request proxy |
+| RSS | `device_memory_bytes` | GPU device footprint, not process RSS — enable Display → Process RSS |
 | TTFT / E2E | `time_to_first_token_seconds` / `e2e_request_latency_seconds` | window Δ when count moves; else **lifetime** mean |
 | Pf / Dc | Zig: `request_prefill_time_seconds` / `request_decode_time_seconds` histograms; Python: `/health` `prefill_seconds_total` / `decode_seconds_total` ÷ `requests_total` | same window-then-lifetime rule |
 | TP | `request_time_per_output_token_seconds` | Zig engine only |
 | Pr | `preemptions_total` | when the scheduler counts yields |
 | Engine lamp | — | awake when scrape OK |
 
-Still empty on TensorFold: **ITL**, **Qw/Rn**, **Prefix/Xp**, **Bt**, **HTTP/CPU/RSS**, engine sleep w1/w2. **Pc** (prompt cache %) only has a source on the Python engine (`/health` `cached_tokens_total`); the Zig engine exports no cached-token counter.
+Still empty on TensorFold: **ITL**, **Qw/Rn**, **Xp**, **Bt**, **HTTP/5xx/CPU**, **Wr** reasons, **Pm/Gm**, engine sleep w1/w2 — no server metric.
 
 Tab titles below are verbatim from the source. The source pads every notebook tab label with one leading and one trailing space: `" Connection "`, `" Catalog "`, `" Local "`, `" Recipes "`, `" Instances "`, `" Options "`, `" Display "`.
 
