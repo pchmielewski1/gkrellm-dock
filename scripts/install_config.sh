@@ -81,7 +81,12 @@ if [[ -f "$CFG" ]]; then
   [[ -n "${v:-}" ]] && LLM_SLOT3_NAME="$v"
 fi
 
-cat >"$CFG" <<EOF
+# Write to a temp file then mv — a mid-script failure must not truncate
+# user-config (that would drop preserved llm_nim features / display_name).
+CFG_TMP="${CFG}.tmp.$$"
+trap 'rm -f "$CFG_TMP"' EXIT
+
+cat >"$CFG_TMP" <<EOF
 ### GKrellM user config.  Managed by gkrellm-dock / gkrellm-dock project ###
 ### Version 2.3.11 ###
 enable_hostname 1
@@ -151,7 +156,7 @@ net_clusters pattern $NETC_PATTERN
 net_clusters label $NETC_LABEL
 EOF
 
-cat >>"$CFG" <<EOF
+cat >>"$CFG_TMP" <<EOF
 # NVML: Temp + UMA% (mask 272); path for GB10
 nvidia NVML 272 abcdefghijkl /usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1
 # LLM NIM/vLLM (nemotron-nim :8000) — prefs preserved if already in user-config
@@ -171,13 +176,19 @@ llm_nim features $LLM_FEATURES
 llm_nim chart_max_tps $LLM_TPS
 llm_nim chart_max_prefill $LLM_PREFILL
 llm_nim timeout_ms $LLM_TIMEOUT
-# Disk: composite only, fixed 5×40 MB/s = 200 MB/s full scale
+# Disk: composite only, fixed 5x40 MB/s = 200 MB/s full scale.
+# text_format must include \$r/\$w — a lone \$T only paints the total (e.g. "27K")
+# and hides read/write rates on the chart (stock GKrellM default restored).
 disk assign_method 2
 disk device Disk 0 0 0 1 1 0 0 Disk
 disk chart_config Disk 40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500
+disk text_format \f\ww\r\f\$M\D2\f\ar\. \$r\D1\f\aw\. \$w
 disk device nvme0n1 0 0 28 0 1 -1 0 nvme0n1
 disk device sda 0 0 45 0 1 -1 0 sda
 EOF
+
+mv -f "$CFG_TMP" "$CFG"
+trap - EXIT
 
 # Drop stale PPP cookies and every veth cookie (veth is handled by net_clusters)
 rm -f "$NETDATA/ppp0" "$NETDATA/ppp0_disabled"

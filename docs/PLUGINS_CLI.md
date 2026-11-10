@@ -142,6 +142,7 @@ Discovery: `/sys/class/thermal/thermal_zone*/temp` + ACPI short name from the zo
 disk assign_method 2
 disk device Disk 0 0 0 1 1 0 0 Disk
 disk chart_config Disk 40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500
+disk text_format \f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w
 disk device nvme0n1 0 0 28 0 1 -1 0 nvme0n1
 disk device sda 0 0 45 0 1 -1 0 sda
 ```
@@ -237,6 +238,7 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 | `disk assign_method` | `2` | Composite-only device assignment |
 | `disk device Disk` | `0 0 0 1 1 0 0 Disk` | Composite **Disk** device descriptor (fixed) |
 | `disk chart_config Disk` | `40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500` | Fixed chart: height 40, grid 40 MB/s (40000000 B/s), 5 grids → **200 MB/s** full scale; two data entries |
+| `disk text_format` | `\f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w` | Stock chart labels: max + **read `$r`** / **write `$w`** rates (a lone `$T` only shows the total) |
 | `disk device nvme0n1` | `0 0 28 0 1 -1 0 nvme0n1` | Per-disk entry, off |
 | `disk device sda` | `0 0 45 0 1 -1 0 sda` | Per-disk entry, off |
 

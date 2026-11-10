@@ -258,6 +258,7 @@ Discovery: `/sys/class/thermal/thermal_zone*/temp` + ACPI short name from the zo
 ```text
 disk assign_method 2
 disk chart_config Disk 40 40000000 5 0 0 1 : …
+disk text_format \f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w
 ```
 
 ### Net

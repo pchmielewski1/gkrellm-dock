@@ -1107,7 +1107,8 @@ static void derive_from_snap(const MetricsSnap *snap, double dt)
 		P.d_decode_t =
 		    hist_mean_prefer_window(&snap->decode_t, &P.prev.decode_t);
 		P.d_itl = hist_window_mean(&snap->itl, &P.prev.itl);
-		P.d_tpot = hist_window_mean(&snap->tpot, &P.prev.tpot);
+		/* Same stall as TFT: TPOT hist only advances on finished reqs. */
+		P.d_tpot = hist_mean_prefer_window(&snap->tpot, &P.prev.tpot);
 		P.d_q_wait = hist_window_mean(&snap->q_wait, &P.prev.q_wait);
 		P.d_infer_t = hist_window_mean(&snap->infer_t, &P.prev.infer_t);
 	} else {
