@@ -91,6 +91,12 @@ typedef struct _GKNvidia {
 	GkClockEventDots event_dots;
 	unsigned long long event_reasons_supported;
 	gboolean event_reasons_supported_ok;
+	/* ViolationStatus cumulative ns — Δ catches Cap/SWth blips between polls */
+	gboolean viol_have_prev;
+	uint64 viol_power_ns;
+	uint64 viol_thermal_ns;
+	double viol_power_ms_last;   /* last poll Δ, for Cap tooltip */
+	double viol_thermal_ms_last; /* last poll Δ, for SWth tooltip */
 	int event_dot_hover; /* -1 or 0..5 */
 	GtkTooltips *event_dot_tips;
 	gboolean event_dot_tips_wired;
@@ -99,6 +105,8 @@ typedef struct _GKNvidia {
 /* Pixmap frames: OK=0, ACTIVE=1, UNKNOWN=2 — same LED size as llm_nim LAMP_SZ */
 #define GK_EVENT_DOT_SZ 9
 #define GK_EVENT_DOT_FRAMES 3
+/* Ignore sub-ms Boost chatter; still catch short throttle flashes. */
+#define GK_VIOLATION_BLIP_NS 1000000ULL
 
 static GKNvidia plugin;
 
@@ -291,9 +299,21 @@ static void event_dot_tip_text(int i, char *buf, size_t buf_size)
 {
 	const char *label = gk_clock_event_dot_label(i);
 	const char *desc = gk_clock_event_dot_desc(i);
+	double ms;
 
-	if (plugin.event_dots.state[i] == GK_DOT_UNKNOWN)
+	if (plugin.event_dots.state[i] == GK_DOT_UNKNOWN) {
 		snprintf(buf, buf_size, "%s — %s (status unavailable)", label, desc);
+		return;
+	}
+	/* Cap / SWth: append last-interval ViolationStatus Δ when non-zero. */
+	ms = 0.0;
+	if (i == 0)
+		ms = plugin.viol_power_ms_last;
+	else if (i == 1)
+		ms = plugin.viol_thermal_ms_last;
+	if (ms >= 0.05)
+		snprintf(buf, buf_size, "%s — %s · last poll %.1f ms capped",
+		         label, desc, ms);
 	else
 		snprintf(buf, buf_size, "%s — %s", label, desc);
 }
@@ -459,6 +479,46 @@ static void draw_event_dot_decals(void)
 	}
 }
 
+static void sample_violation_blips(NVGpuInfo *g, double now)
+{
+	nvmlViolationTime_t vt;
+	uint64 delta;
+
+	plugin.viol_power_ms_last = 0.0;
+	plugin.viol_thermal_ms_last = 0.0;
+
+	if (!g || !g->good || !nvml.nvmlDeviceGetViolationStatus)
+		return;
+
+	/* POWER → Cap (dot 0) */
+	memset(&vt, 0, sizeof(vt));
+	if (NVFN(nvmlDeviceGetViolationStatus(g->h, NVML_PERF_POLICY_POWER, &vt))) {
+		if (plugin.viol_have_prev && vt.violationTime >= plugin.viol_power_ns) {
+			delta = vt.violationTime - plugin.viol_power_ns;
+			plugin.viol_power_ms_last = (double)delta / 1.0e6;
+			if (delta >= GK_VIOLATION_BLIP_NS)
+				gk_clock_event_dots_pulse(&plugin.event_dots, 0, now);
+		}
+		plugin.viol_power_ns = vt.violationTime;
+	}
+
+	/* THERMAL → SWth (dot 1); HW thermal bit still from event reasons */
+	memset(&vt, 0, sizeof(vt));
+	if (NVFN(nvmlDeviceGetViolationStatus(g->h, NVML_PERF_POLICY_THERMAL,
+	                                      &vt))) {
+		if (plugin.viol_have_prev &&
+		    vt.violationTime >= plugin.viol_thermal_ns) {
+			delta = vt.violationTime - plugin.viol_thermal_ns;
+			plugin.viol_thermal_ms_last = (double)delta / 1.0e6;
+			if (delta >= GK_VIOLATION_BLIP_NS)
+				gk_clock_event_dots_pulse(&plugin.event_dots, 1, now);
+		}
+		plugin.viol_thermal_ns = vt.violationTime;
+	}
+
+	plugin.viol_have_prev = TRUE;
+}
+
 static void sample_clock_event_dots(void)
 {
 	NVGpuInfo *g = &gpu_info[0];
@@ -485,6 +545,15 @@ static void sample_clock_event_dots(void)
 
 	gk_clock_event_dots_update(&plugin.event_dots, available, reasons,
 	                           available ? supported : 0ULL, now);
+
+	/* Diff ViolationStatus so Cap/SWth catch blips shorter than the poll. */
+	if (available)
+		sample_violation_blips(g, now);
+	else {
+		plugin.viol_have_prev = FALSE;
+		plugin.viol_power_ms_last = 0.0;
+		plugin.viol_thermal_ms_last = 0.0;
+	}
 }
 
 /* Dots row first on the Temp/UMA panel — keeps main_vbox chart packing untouched. */
@@ -495,6 +564,11 @@ static int populate_event_dot_decals(int y)
 
 	gk_clock_event_dots_init(&plugin.event_dots);
 	plugin.event_reasons_supported_ok = FALSE;
+	plugin.viol_have_prev = FALSE;
+	plugin.viol_power_ns = 0;
+	plugin.viol_thermal_ns = 0;
+	plugin.viol_power_ms_last = 0.0;
+	plugin.viol_thermal_ms_last = 0.0;
 	plugin.event_dot_hover = -1;
 	memset(plugin.event_dot_decal, 0, sizeof(plugin.event_dot_decal));
 

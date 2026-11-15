@@ -40,6 +40,12 @@ void gk_clock_event_dots_update(GkClockEventDots *d,
                                 unsigned long long supported,
                                 double now_sec);
 
+/*
+ * Force ACTIVE + latch on one dot (e.g. Cap/SWth after a ViolationStatus
+ * blip between polls). No-op for out-of-range index or UNKNOWN dots.
+ */
+void gk_clock_event_dots_pulse(GkClockEventDots *d, int index, double now_sec);
+
 const char *gk_clock_event_dot_label(int i);
 const char *gk_clock_event_dot_desc(int i);
 unsigned long long gk_clock_event_dot_mask(int i);

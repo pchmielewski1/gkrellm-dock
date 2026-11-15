@@ -81,6 +81,16 @@ void gk_clock_event_dots_update(GkClockEventDots *d,
 	}
 }
 
+void gk_clock_event_dots_pulse(GkClockEventDots *d, int index, double now_sec)
+{
+	if (!d || index < 0 || index >= GK_CLOCK_EVENT_DOT_COUNT)
+		return;
+	if (d->state[index] == GK_DOT_UNKNOWN)
+		return;
+	d->state[index] = GK_DOT_ACTIVE;
+	d->latch_until[index] = now_sec + GK_CLOCK_EVENT_LATCH_SEC;
+}
+
 const char *gk_clock_event_dot_label(int i)
 {
 	if (i < 0 || i >= GK_CLOCK_EVENT_DOT_COUNT)

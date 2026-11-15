@@ -32,7 +32,7 @@ Panel anchors (where each plugin lands in the monitor stack): `nvidia` — after
 | Temp row | `nvmlDeviceGetTemperature` | text `NN.N C`, one decimal (e.g. `45.0C`; source format `"%.01fC"`) |
 | UMA row | `/proc/meminfo` → used % = (Total − Available)/Total × 100, clamped 0–100 | text `%u%%` |
 
-**Clock-event dots** (always on; not part of the `272` text-row mask). L→R: Cap (`0x4` SW Power Cap), SWth (`0x20`), HWth (`0x40`), HWsl (`0x8`), Brk (`0x80`), App (`0x2`). Green = OK, red = Active with ~2.5 s latch, gray = unavailable. Hover tooltip = label + short description (same strings as `clock_event_dots.c`). Idle / Sync Boost / Display Clock Setting are not shown.
+**Clock-event dots** (always on; not part of the `272` text-row mask). L→R: Cap (`0x4` SW Power Cap), SWth (`0x20`), HWth (`0x40`), HWsl (`0x8`), Brk (`0x80`), App (`0x2`). Green = OK, red = Active with ~2.5 s latch, gray = unavailable. Hover tooltip = label + short description (same strings as `clock_event_dots.c`). Idle / Sync Boost / Display Clock Setting are not shown. Cap/SWth also pulse from `nvmlDeviceGetViolationStatus` Δ ≥ 1 ms (POWER/THERMAL) so blips shorter than the poll are not missed; tip may show `last poll X.X ms capped`.
 
 NVML memory-usage values are unused on GB10 (UMA → N/A); the UMA row falls back to host `/proc/meminfo` when NVML reports nothing. Clocks above ~3003 MHz (NVML hardware max) are possible; the 2400–2550 window is intentional (default boost 2418 MHz, ~2500–2550 under load — wider windows peg or flatten the chart).
 

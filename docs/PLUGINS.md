@@ -44,6 +44,8 @@ One thin strip **above Temp / UMA** (charts above unchanged). Six dots, left →
 
 Colors: **green** = not active, **red** = active (stays red ~2.5 s after a brief pulse so flashes are visible), **gray** = status unavailable (NVML missing/failed — never shown as green). Intentionally omitted from the strip: Idle, Sync Boost, Display Clock Setting.
 
+**Accuracy (Cap / SWth):** besides the instantaneous clocks-event bitmask, the plugin diffs `nvmlDeviceGetViolationStatus` (POWER → Cap, THERMAL → SWth). A Δ ≥ 1 ms of capped time between polls pulses that dot red even if the bit was already clear at sample time — so sub-second throttle blips are not missed. Hover tip may show `last poll X.X ms capped`. Other dots (HWth / HWsl / Brk / App) stay bitmask-only.
+
 Clock values outside 2400–2550 are **clamped on the chart** only; the text readout still shows the real MHz. Hardware max clock on GB10 is higher (~3003 MHz via NVML); the narrow window is intentional for readable mid-band activity.
 
 ### Config

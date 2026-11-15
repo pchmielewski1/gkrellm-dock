@@ -52,6 +52,17 @@ typedef struct {
 } nvmlFan_t;
 #define nvmlFan_ver NVML_API_VERSION(nvmlFan_t, 1)
 
+/* Cumulative time below application clocks due to a perf policy. */
+typedef struct {
+	uint64 referenceTime; /* CPU timestamp, microseconds */
+	uint64 violationTime; /* nanoseconds held below app clocks */
+} nvmlViolationTime_t;
+
+typedef enum {
+	NVML_PERF_POLICY_POWER = 0,
+	NVML_PERF_POLICY_THERMAL = 1
+} nvmlPerfPolicyType_t;
+
 /* Matches NVML nvmlPciInfo_t (legacy + busId[32]) — undersized buffer
  * previously overflowed into following NVGpuInfo fields. */
 typedef struct {
@@ -81,6 +92,8 @@ DECLARE_FUNCTION(nvmlDeviceGetNumFans, nvmlDevice_t, uint*);
 DECLARE_FUNCTION(nvmlDeviceGetFanSpeedRPM, nvmlDevice_t, nvmlFan_t*);
 DECLARE_FUNCTION(nvmlDeviceGetCurrentClocksEventReasons, nvmlDevice_t, uint64*);
 DECLARE_FUNCTION(nvmlDeviceGetSupportedClocksEventReasons, nvmlDevice_t, uint64*);
+DECLARE_FUNCTION(nvmlDeviceGetViolationStatus, nvmlDevice_t, nvmlPerfPolicyType_t,
+                 nvmlViolationTime_t *);
 #undef DECLARE_FUNCTION
 
 typedef struct {
@@ -102,9 +115,10 @@ typedef struct {
 	nvmlDeviceGetPciInfo_fn nvmlDeviceGetPciInfo;
 	nvmlDeviceGetNumFans_fn nvmlDeviceGetNumFans;
 	nvmlDeviceGetFanSpeedRPM_fn nvmlDeviceGetFanSpeedRPM;
-	/* Optional — older NVML may omit clocks event reason APIs */
+	/* Optional — older NVML may omit clocks event / violation APIs */
 	nvmlDeviceGetCurrentClocksEventReasons_fn nvmlDeviceGetCurrentClocksEventReasons;
 	nvmlDeviceGetSupportedClocksEventReasons_fn nvmlDeviceGetSupportedClocksEventReasons;
+	nvmlDeviceGetViolationStatus_fn nvmlDeviceGetViolationStatus;
 } GKNVMLLib;
 
 boolean initialize_gpulib(GKNVMLLib *lib);

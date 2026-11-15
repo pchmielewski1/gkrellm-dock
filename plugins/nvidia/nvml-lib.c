@@ -139,6 +139,9 @@ boolean initialize_gpulib(GKNVMLLib *lib)
 	lib->nvmlDeviceGetSupportedClocksEventReasons =
 		(nvmlDeviceGetSupportedClocksEventReasons_fn)dlsym(
 			lib->handle, "nvmlDeviceGetSupportedClocksEventReasons");
+	lib->nvmlDeviceGetViolationStatus =
+		(nvmlDeviceGetViolationStatus_fn)dlsym(
+			lib->handle, "nvmlDeviceGetViolationStatus");
 
 	if (res)
 		res = (lib->nvmlInit() == NVML_SUCCESS);

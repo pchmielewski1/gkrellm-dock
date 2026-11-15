@@ -65,6 +65,12 @@ def load(so: Path):
         ctypes.c_double,
     ]
     lib.gk_clock_event_dots_update.restype = None
+    lib.gk_clock_event_dots_pulse.argtypes = [
+        ctypes.POINTER(GkClockEventDots),
+        ctypes.c_int,
+        ctypes.c_double,
+    ]
+    lib.gk_clock_event_dots_pulse.restype = None
     lib.gk_clock_event_dot_label.argtypes = [ctypes.c_int]
     lib.gk_clock_event_dot_label.restype = ctypes.c_char_p
     lib.gk_clock_event_dot_desc.argtypes = [ctypes.c_int]
@@ -123,6 +129,28 @@ def test_labels(lib):
         assert lib.gk_clock_event_dot_desc(i)
 
 
+def test_pulse_latches_missed_blip(lib):
+    """ViolationStatus-style pulse: bit never seen, still ACTIVE + latch."""
+    d = GkClockEventDots()
+    lib.gk_clock_event_dots_init(ctypes.byref(d))
+    lib.gk_clock_event_dots_update(ctypes.byref(d), 1, 0, ALL, 10.0)
+    assert d.state[0] == GK_DOT_OK
+    lib.gk_clock_event_dots_pulse(ctypes.byref(d), 0, 10.0)  # Cap blip
+    assert d.state[0] == GK_DOT_ACTIVE
+    lib.gk_clock_event_dots_update(ctypes.byref(d), 1, 0, ALL, 11.0)
+    assert d.state[0] == GK_DOT_ACTIVE
+    lib.gk_clock_event_dots_update(ctypes.byref(d), 1, 0, ALL, 13.0)
+    assert d.state[0] == GK_DOT_OK
+
+
+def test_pulse_skips_unknown(lib):
+    d = GkClockEventDots()
+    lib.gk_clock_event_dots_init(ctypes.byref(d))
+    lib.gk_clock_event_dots_update(ctypes.byref(d), 0, 0, ALL, 10.0)
+    lib.gk_clock_event_dots_pulse(ctypes.byref(d), 0, 10.0)
+    assert d.state[0] == GK_DOT_UNKNOWN
+
+
 def main() -> int:
     so = build_so()
     lib = load(so)
@@ -132,6 +160,8 @@ def main() -> int:
     test_latch_holds_then_clears(lib)
     test_unsupported_cap_unknown(lib)
     test_labels(lib)
+    test_pulse_latches_missed_blip(lib)
+    test_pulse_skips_unknown(lib)
     print("ok")
     return 0
 
