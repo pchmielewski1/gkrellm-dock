@@ -20,6 +20,7 @@ build/libgkdock_test.so: $(LIB_SRCS)
 
 unit: build/libgkdock_test.so
 	python3 tests/test_cpu_map.py
+	python3 tests/test_clock_event_dots.py
 
 plugins/cpu_clusters/cpu_clusters.so: plugins/cpu_clusters/cpu_clusters.c $(LIB_OBJS)
 	$(CC) $(CFLAGS) $(GKCFLAGS) -Ilib -shared -o $@ \

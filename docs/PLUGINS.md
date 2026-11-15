@@ -26,7 +26,23 @@ nvidia.so → llm_nim.so → cpu_clusters.so → net_clusters.so → board_acpi.
 | GPU Load | SM utilization | 0–100 % |
 | GPU Clock | Graphics clock | **Chart window 2400–2550 MHz**; label shows raw MHz |
 | GPU Power | Board power draw | 0–100 W chart scale |
+| Clock-event dots | Six bare status dots (NVML clocks event reasons) | Between Power and Temp/UMA — see below |
 | Text row | Temperature + UMA memory % | NVML mask includes temp + memory |
+
+#### Clock-event status dots
+
+One thin strip **above Temp / UMA** (charts above unchanged). Six dots, left → right, **no on-panel labels** — hover tooltip + this table:
+
+| # | Tooltip label | NVML reason | Meaning |
+|---|---------------|-------------|---------|
+| 1 | Cap | SW Power Cap | Power limit holding clocks |
+| 2 | SWth | SW Thermal Slowdown | Software thermal throttling |
+| 3 | HWth | HW Thermal Slowdown | Hardware thermal throttling |
+| 4 | HWsl | HW Slowdown | General hardware slowdown |
+| 5 | Brk | HW Power Brake | Hardware power brake |
+| 6 | App | Applications Clocks | Application / locked clocks setting |
+
+Colors: **green** = not active, **red** = active (stays red ~2.5 s after a brief pulse so flashes are visible), **gray** = status unavailable (NVML missing/failed — never shown as green). Intentionally omitted from the strip: Idle, Sync Boost, Display Clock Setting.
 
 Clock values outside 2400–2550 are **clamped on the chart** only; the text readout still shows the real MHz. Hardware max clock on GB10 is higher (~3003 MHz via NVML); the narrow window is intentional for readable mid-band activity.
 
@@ -41,7 +57,7 @@ nvidia NVML 272 abcdefghijkl /usr/lib/aarch64-linux-gnu/libnvidia-ml.so.1
 
 ### Build pitfall
 
-Link **both** `nvidia.o` and `nvml-lib.o`. A partial link produces a plugin that loads with an empty GPU block. Prefer `make -C plugins/nvidia clean && make -C plugins/nvidia`.
+Link **`nvidia.o`**, **`nvml-lib.o`**, and **`clock_event_dots.o`**. A partial link produces a plugin that loads with an empty GPU block. Prefer `make -C plugins/nvidia clean && make -C plugins/nvidia`.
 
 ---
 
@@ -74,17 +90,20 @@ Apply updates live config and reformats status lines immediately.
 Each enabled **Display** bit owns its own strip (show/hide on checkbox, live rebuild):
 
 ```text
-[Nemotron              ●]  header + engine lamp (green/yellow/red/gray)
-[in           1.2M]        session prefill tokens since dock start
-[out          8.4M]        session decode tokens since dock start
-[Dec          27/s]        label left | value right
-[~~~~ line chart ~~~~]     X=time (horizontal history), Y=value
+[Nemotron         ⏻ ●]  header + power button + engine lamp
+[Q           R1/W0]     queue (Display bit) — directly under the name
+[in           1.2M]     session prefill tokens since dock start
+[out          8.4M]     session decode tokens since dock start
+[Dec          27/s]     label left | value right
+[~~~~ line chart ~~~~]  X=time (horizontal history), Y=value
 [KV           16%]
 [~~~~ line chart ~~~~]
 …
 ```
 
-- **Engine lamp** — header right; Display bit **Engine status lamp** shows/hides it (no Eng tile). Colors: awake=green, weights_offloaded=yellow, discard_all=red, down=gray
+- **Power button** — beveled control left of the engine lamp. Colours: **green** = stopped (click → start), **yellow** = starting, **red** = running (click → stop). Uses `gkrellm-nim` with configurable instance name / helper path (Connection). Does not change colour on hover.
+- **Engine lamp** — header rightmost; Display bit **Engine status lamp** shows/hides it (no Eng tile). Colors: awake=green, weights_offloaded=yellow, discard_all=red, down=gray
+- **Q** — when the Queue Display bit is on, the strip is built **directly under the header**, above session `in`/`out`.
 - **Session `in` / `out`** — always shown (not in the features bitmask). Cumulative tokens for **this GKrellM process**:
   - `in` = Σ Δ `vllm:prompt_tokens_total` (prefill / prompt)
   - `out` = Σ Δ `vllm:generation_tokens_total` (decode / generation)
@@ -253,11 +272,11 @@ Discovery: `/sys/class/thermal/thermal_zone*/temp` + ACPI short name from the zo
 ### Disk
 
 - Composite device **Disk** only (per-disk charts disabled).  
-- Fixed chart config: **5 × 40 MB/s = 200 MB/s** full scale (stock auto-scale is unreadable on NVMe).
+- **Auto-scale** with **5 grid lines** (seed 1 MB/s). `$M` tracks the live max; `\ww` keeps read/write side-by-side.
 
 ```text
 disk assign_method 2
-disk chart_config Disk 40 40000000 5 0 0 1 : …
+disk chart_config Disk 40 1000000 5 1 0 1 : …
 disk text_format \f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w
 ```
 
@@ -274,6 +293,7 @@ net_clusters label Docker
 ```
 
 - **Stock Net enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`) and `docker0`.  
+- Chart label: `\ww` dual-field **`$M` + RX `$r` / TX `$t`** (`net text_format`), not `$T`.  
 - **Container `veth*`:** not shown one by one — folded into a single chart by [`net_clusters.so`](#net_clustersso--docker--veth-folded).  
 - **Ignored:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap, `veth*` (stock monitor only).  
 - All `veth*` cookies under `~/.gkrellm2/data/net/` are removed on install (no per-container state to keep).  

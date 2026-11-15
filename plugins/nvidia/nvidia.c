@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "nvml-lib.h"
+#include "clock_event_dots.h"
 
 #define GK_PLUGIN_NAME "nvidia"
 #define GK_CONFIG_KEYWORD "nvidia"
@@ -84,7 +85,20 @@ typedef struct _GKNvidia {
 	gulong cum_load, cum_load_tot;
 	gulong cum_clock, cum_clock_tot;
 	gulong cum_power, cum_power_tot;
+	/* Clock-event dots live ON the Temp/UMA meter panel (no extra vbox child) */
+	GdkPixmap *event_dot_pm;
+	GkrellmDecal *event_dot_decal[GK_CLOCK_EVENT_DOT_COUNT];
+	GkClockEventDots event_dots;
+	unsigned long long event_reasons_supported;
+	gboolean event_reasons_supported_ok;
+	int event_dot_hover; /* -1 or 0..5 */
+	GtkTooltips *event_dot_tips;
+	gboolean event_dot_tips_wired;
 } GKNvidia;
+
+/* Pixmap frames: OK=0, ACTIVE=1, UNKNOWN=2 — same LED size as llm_nim LAMP_SZ */
+#define GK_EVENT_DOT_SZ 9
+#define GK_EVENT_DOT_FRAMES 3
 
 static GKNvidia plugin;
 
@@ -273,6 +287,260 @@ static void update_gpu_data(void)
 	}
 }
 
+static void event_dot_tip_text(int i, char *buf, size_t buf_size)
+{
+	const char *label = gk_clock_event_dot_label(i);
+	const char *desc = gk_clock_event_dot_desc(i);
+
+	if (plugin.event_dots.state[i] == GK_DOT_UNKNOWN)
+		snprintf(buf, buf_size, "%s — %s (status unavailable)", label, desc);
+	else
+		snprintf(buf, buf_size, "%s — %s", label, desc);
+}
+
+static int event_dot_hit_test(gdouble x, gdouble y)
+{
+	GkrellmStyle *style = gkrellm_meter_style(plugin.style_id);
+	GkrellmMargin *m = gkrellm_get_style_margins(style);
+	int w = gkrellm_chart_width();
+	int usable, slot, i, x0, x1;
+	GkrellmDecal *d;
+
+	/* Hit the whole column slot — 5px dots are hard to aim at. */
+	usable = w - m->left - m->right;
+	if (usable < GK_EVENT_DOT_SZ * GK_CLOCK_EVENT_DOT_COUNT)
+		usable = GK_EVENT_DOT_SZ * GK_CLOCK_EVENT_DOT_COUNT;
+	slot = usable / GK_CLOCK_EVENT_DOT_COUNT;
+
+	for (i = 0; i < GK_CLOCK_EVENT_DOT_COUNT; ++i) {
+		d = plugin.event_dot_decal[i];
+		if (!d)
+			continue;
+		x0 = m->left + slot * i;
+		x1 = x0 + slot;
+		if (x >= x0 && x < x1 &&
+		    y >= d->y - 2 && y < d->y + GK_EVENT_DOT_SZ + 2)
+			return i;
+	}
+	return -1;
+}
+
+static void event_dots_set_tip_for_hit(int hit)
+{
+	char tip[192];
+	GtkWidget *da;
+
+	if (!plugin.panel || !plugin.panel->drawing_area)
+		return;
+	da = plugin.panel->drawing_area;
+	if (!plugin.event_dot_tips)
+		plugin.event_dot_tips = gtk_tooltips_new();
+
+	plugin.event_dot_hover = hit;
+	if (hit < 0) {
+		gtk_tooltips_set_tip(plugin.event_dot_tips, da, NULL, NULL);
+		return;
+	}
+	event_dot_tip_text(hit, tip, sizeof(tip));
+	gtk_tooltips_set_tip(plugin.event_dot_tips, da, tip, NULL);
+}
+
+static gboolean event_dots_motion(GtkWidget *widget, GdkEventMotion *ev,
+                                  gpointer data)
+{
+	UNUSED(widget);
+	UNUSED(data);
+	event_dots_set_tip_for_hit(event_dot_hit_test(ev->x, ev->y));
+	return FALSE;
+}
+
+static gboolean event_dots_leave(GtkWidget *widget, GdkEventCrossing *ev,
+                                 gpointer data)
+{
+	UNUSED(widget);
+	UNUSED(ev);
+	UNUSED(data);
+	event_dots_set_tip_for_hit(-1);
+	return FALSE;
+}
+
+static gboolean event_dots_query_tooltip(GtkWidget *widget, gint x, gint y,
+                                         gboolean keyboard_mode,
+                                         GtkTooltip *tooltip, gpointer data)
+{
+	int hit;
+	char tip[192];
+
+	UNUSED(widget);
+	UNUSED(keyboard_mode);
+	UNUSED(data);
+
+	hit = event_dot_hit_test((gdouble)x, (gdouble)y);
+	plugin.event_dot_hover = hit;
+	if (hit < 0)
+		return FALSE;
+	event_dot_tip_text(hit, tip, sizeof(tip));
+	gtk_tooltip_set_text(tooltip, tip);
+	return TRUE;
+}
+
+static GdkPixmap *make_event_dot_pixmap(void)
+{
+	GdkPixmap *pm;
+	GdkGC *gc;
+	GdkColormap *cmap;
+	GdkColor bg, c[GK_EVENT_DOT_FRAMES];
+	int i, sz = GK_EVENT_DOT_SZ;
+
+	pm = gdk_pixmap_new(NULL, sz, sz * GK_EVENT_DOT_FRAMES,
+	                    gdk_visual_get_system()->depth);
+	gc = gdk_gc_new(pm);
+	cmap = gdk_colormap_get_system();
+
+	gdk_color_parse("#152033", &bg);
+	gdk_colormap_alloc_color(cmap, &bg, FALSE, TRUE);
+	gdk_color_parse("#3ddc84", &c[GK_DOT_OK]);
+	gdk_color_parse("#ff3b4a", &c[GK_DOT_ACTIVE]);
+	gdk_color_parse("#6a7180", &c[GK_DOT_UNKNOWN]);
+	for (i = 0; i < GK_EVENT_DOT_FRAMES; ++i)
+		gdk_colormap_alloc_color(cmap, &c[i], FALSE, TRUE);
+
+	for (i = 0; i < GK_EVENT_DOT_FRAMES; ++i) {
+		gdk_gc_set_foreground(gc, &bg);
+		gdk_draw_rectangle(pm, gc, TRUE, 0, i * sz, sz, sz);
+		gdk_gc_set_foreground(gc, &c[i]);
+		/* inset 1px so a 5px LED still reads as a round dot */
+		gdk_draw_arc(pm, gc, TRUE, 1, i * sz + 1, sz - 2, sz - 2, 0,
+		             360 * 64);
+	}
+	g_object_unref(gc);
+	return pm;
+}
+
+static void layout_event_dot_decals(void)
+{
+	GkrellmStyle *style = gkrellm_meter_style(plugin.style_id);
+	GkrellmMargin *m = gkrellm_get_style_margins(style);
+	int w = gkrellm_chart_width();
+	int usable, slot, i, y;
+
+	if (!plugin.event_dot_decal[0])
+		return;
+
+	usable = w - m->left - m->right;
+	if (usable < GK_EVENT_DOT_SZ * GK_CLOCK_EVENT_DOT_COUNT)
+		usable = GK_EVENT_DOT_SZ * GK_CLOCK_EVENT_DOT_COUNT;
+	slot = usable / GK_CLOCK_EVENT_DOT_COUNT;
+	y = plugin.event_dot_decal[0]->y;
+
+	for (i = 0; i < GK_CLOCK_EVENT_DOT_COUNT; ++i) {
+		plugin.event_dot_decal[i]->x =
+			m->left + slot * i + (slot - GK_EVENT_DOT_SZ) / 2;
+		plugin.event_dot_decal[i]->y = y;
+	}
+}
+
+static void draw_event_dot_decals(void)
+{
+	int i, frame;
+
+	if (!plugin.panel || !plugin.event_dot_decal[0])
+		return;
+
+	layout_event_dot_decals();
+	for (i = 0; i < GK_CLOCK_EVENT_DOT_COUNT; ++i) {
+		if (!plugin.event_dot_decal[i])
+			continue;
+		frame = plugin.event_dots.state[i];
+		if (frame < 0 || frame >= GK_EVENT_DOT_FRAMES)
+			frame = GK_DOT_UNKNOWN;
+		gkrellm_draw_decal_pixmap(plugin.panel, plugin.event_dot_decal[i],
+		                          frame);
+	}
+}
+
+static void sample_clock_event_dots(void)
+{
+	NVGpuInfo *g = &gpu_info[0];
+	unsigned long long reasons = 0ULL;
+	unsigned long long supported = 0ULL;
+	int available = 0;
+	double now;
+
+	now = (double)g_get_monotonic_time() / 1000000.0;
+
+	if (g->good && nvml.nvmlDeviceGetCurrentClocksEventReasons &&
+	    NVFN(nvmlDeviceGetCurrentClocksEventReasons(g->h, &reasons))) {
+		available = 1;
+		if (!plugin.event_reasons_supported_ok &&
+		    nvml.nvmlDeviceGetSupportedClocksEventReasons &&
+		    NVFN(nvmlDeviceGetSupportedClocksEventReasons(g->h, &supported))) {
+			plugin.event_reasons_supported = supported;
+			plugin.event_reasons_supported_ok = TRUE;
+		}
+		if (!plugin.event_reasons_supported_ok)
+			plugin.event_reasons_supported = ~0ULL;
+		supported = plugin.event_reasons_supported;
+	}
+
+	gk_clock_event_dots_update(&plugin.event_dots, available, reasons,
+	                           available ? supported : 0ULL, now);
+}
+
+/* Dots row first on the Temp/UMA panel — keeps main_vbox chart packing untouched. */
+static int populate_event_dot_decals(int y)
+{
+	GkrellmStyle *style;
+	int i, base_y;
+
+	gk_clock_event_dots_init(&plugin.event_dots);
+	plugin.event_reasons_supported_ok = FALSE;
+	plugin.event_dot_hover = -1;
+	memset(plugin.event_dot_decal, 0, sizeof(plugin.event_dot_decal));
+
+	if (!plugin.event_dot_pm)
+		plugin.event_dot_pm = make_event_dot_pixmap();
+
+	style = gkrellm_meter_style(plugin.style_id);
+	plugin.event_dot_decal[0] = gkrellm_create_decal_pixmap(
+		plugin.panel, plugin.event_dot_pm, NULL, GK_EVENT_DOT_FRAMES,
+		style, -1, y);
+	base_y = plugin.event_dot_decal[0]->y;
+	for (i = 1; i < GK_CLOCK_EVENT_DOT_COUNT; ++i) {
+		plugin.event_dot_decal[i] = gkrellm_create_decal_pixmap(
+			plugin.panel, plugin.event_dot_pm, NULL, GK_EVENT_DOT_FRAMES,
+			style, -1, base_y);
+	}
+	layout_event_dot_decals();
+	return base_y + GK_EVENT_DOT_SZ + 3;
+}
+
+static void wire_event_dot_tooltips(void)
+{
+	GtkWidget *da;
+
+	if (plugin.event_dot_tips_wired || !plugin.panel ||
+	    !plugin.panel->drawing_area)
+		return;
+	da = plugin.panel->drawing_area;
+	g_signal_connect(G_OBJECT(da), "motion_notify_event",
+	                 G_CALLBACK(event_dots_motion), NULL);
+	g_signal_connect(G_OBJECT(da), "leave_notify_event",
+	                 G_CALLBACK(event_dots_leave), NULL);
+	g_signal_connect(G_OBJECT(da), "query-tooltip",
+	                 G_CALLBACK(event_dots_query_tooltip), NULL);
+	gtk_widget_add_events(da,
+	                      GDK_POINTER_MOTION_MASK |
+	                      GDK_POINTER_MOTION_HINT_MASK |
+	                      GDK_LEAVE_NOTIFY_MASK |
+	                      GDK_ENTER_NOTIFY_MASK);
+	gtk_widget_set_has_tooltip(da, TRUE);
+	if (!plugin.event_dot_tips)
+		plugin.event_dot_tips = gtk_tooltips_new();
+	gtk_tooltips_enable(plugin.event_dot_tips);
+	plugin.event_dot_tips_wired = TRUE;
+}
+
 static gboolean read_uma_pct(guint *pct_out)
 {
 	FILE *f = fopen("/proc/meminfo", "r");
@@ -398,6 +666,7 @@ static void refresh_gpu_chart(gpointer data)
 	GkrellmChart *cp = (GkrellmChart *)data;
 	char buf[48];
 	NVGpuInfo *g = &gpu_info[0];
+	GkrellmTextstyle *ts;
 
 	gkrellm_draw_chartdata(cp);
 	if (g->good) {
@@ -409,8 +678,16 @@ static void refresh_gpu_chart(gpointer data)
 			snprintf(buf, sizeof(buf), "%uW", g->pwr / 1000);
 		else
 			buf[0] = '\0';
-		if (buf[0])
-			gkrellm_draw_chart_text(cp, plugin.chart_style_id, buf);
+		/*
+		 * Use draw_chart_label (glyphs only) — draw_chart_text paints an opaque
+		 * backdrop box that shows as a different-shade strip on the left of
+		 * Load/Clock/Power (visible even in older docs/gkrellm-gpu-zoom.png).
+		 */
+		if (buf[0] && cp->pixmap) {
+			ts = gkrellm_chart_textstyle(plugin.chart_style_id);
+			if (ts)
+				gkrellm_draw_chart_label(cp, ts, 2, 1, buf);
+		}
 	}
 	gkrellm_draw_chart_to_screen(cp);
 }
@@ -597,6 +874,8 @@ static void update_plugin(void)
 	}
 
 	update_gpu_data();
+	sample_clock_event_dots();
+	draw_event_dot_decals();
 
 	for (i = 0; i < GK_MAX_GPUS; ++i) {
 
@@ -687,7 +966,9 @@ static void populate_panel(void)
 	char* l;
 	static char SIZE_STRING[] = "WWWWWWWW";
 
-	for (y = -1, i = 0; i < GK_MAX_GPUS; ++i) {
+	y = populate_event_dot_decals(-1);
+
+	for (i = 0; i < GK_MAX_GPUS; ++i) {
 
 		if (!gpu_info[i].good)
 			continue;
@@ -710,6 +991,8 @@ static void destroy_nv_panel(void)
 {
 	gkrellm_panel_destroy(plugin.panel);
 	plugin.panel = NULL;
+	memset(plugin.event_dot_decal, 0, sizeof(plugin.event_dot_decal));
+	plugin.event_dot_tips_wired = FALSE;
 }
 
 static void create_nv_panel(gint first_create)
@@ -736,6 +1019,7 @@ static void create_nv_panel(gint first_create)
 		                 G_CALLBACK(panel_click_event),
 		                 NULL);
 	}
+	wire_event_dot_tooltips();
 }
 
 static void rebuild_nv_panel(void)
@@ -814,6 +1098,7 @@ static void create_plugin(GtkWidget* vbox, gint first_create)
 		create_header_panel(FALSE);
 	}
 
+	/* Dots are decals on this panel (above Temp/UMA) — no extra vbox child. */
 	create_nv_panel(first_create);
 }
 

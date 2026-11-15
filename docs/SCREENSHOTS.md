@@ -32,9 +32,9 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 | [`gkrellm-dock-hero.png`](gkrellm-dock-hero.png) | Full dock, 2× nearest-neighbor + pad — **README hero** for GitHub |
 | [`gkrellm-dock.png`](gkrellm-dock.png) | Full dock at native 1× resolution (source for crops) |
 | [`gkrellm-top.png`](gkrellm-top.png) | Hostname, calendar date, clock |
-| [`gkrellm-gpu.png`](gkrellm-gpu.png) | NVIDIA GB10 block — Load, Clock, Power, Temp, UMA % |
-| [`gkrellm-gpu-zoom.png`](gkrellm-gpu-zoom.png) | Closer crop of GPU charts |
-| [`gkrellm-llm.png`](gkrellm-llm.png) | NIM header: model + engine lamp; **`in`/`out` session token totals** (tokens since this GKrellM process); Dec + KV start |
+| [`gkrellm-gpu.png`](gkrellm-gpu.png) | NVIDIA GB10 — Load, Clock, Power, **6 clock-event dots**, Temp, UMA % |
+| [`gkrellm-gpu-zoom.png`](gkrellm-gpu-zoom.png) | Closer crop of GPU charts + dots |
+| [`gkrellm-llm.png`](gkrellm-llm.png) | NIM header: model + **power button** + engine lamp; **Q** under name; **`in`/`out`** session totals; Dec start |
 | [`gkrellm-llm-rows.png`](gkrellm-llm-rows.png) | Full LLM NIM panel (all enabled Display strips + LINE charts) |
 | [`gkrellm-cpu.png`](gkrellm-cpu.png) | Both Grace clusters — **CPU X925** and **CPU A725** |
 | [`gkrellm-cpu-x925.png`](gkrellm-cpu-x925.png) | X925 cluster only |
@@ -42,16 +42,16 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 | [`gkrellm-cpu-zone.png`](gkrellm-cpu-zone.png) | Same as `gkrellm-cpu.png` (alias crop for older docs) |
 | [`gkrellm-proc-area.png`](gkrellm-proc-area.png) | Process/user counts and Proc meter |
 | [`gkrellm-gap-proc.png`](gkrellm-gap-proc.png) | Short crop around the Proc gap |
-| [`gkrellm-net.png`](gkrellm-net.png) | Disk + stock net meter(s) (Wi‑Fi/Ethernet; `docker0` while up) + the folded **Docker** chart from `net_clusters` (all UP container `veth*`: `N ↓in ↑out`, cyan top band = in, amber bottom band = out) |
-| [`gkrellm-bottom.png`](gkrellm-bottom.png) | Swap, Board thermals (TSOC…TUNC), Uptime |
+| [`gkrellm-net.png`](gkrellm-net.png) | Auto-scale **Disk** (`$r`/`$w`) + stock NIC RX/TX + folded **Docker** chart from `net_clusters` |
+| [`gkrellm-bottom.png`](gkrellm-bottom.png) | Fan / Swap, Board thermals (TSOC…TUNC), Uptime |
 | [`gkrellm-slice-top.png`](gkrellm-slice-top.png) | Top third of the full dock |
 | [`gkrellm-slice-mid.png`](gkrellm-slice-mid.png) | Middle third |
 | [`gkrellm-slice-mid2.png`](gkrellm-slice-mid2.png) | Lower third |
 
 ## Notes
 
-- Crop Y bounds assume the current layout (~2.1k px tall: GPU, LLM NIM with many Display bits, CPU clusters, Proc/Disk/Net, folded Docker chart, Swap, Board; `uma_dram.so` not enabled). After changing which metrics or plugins are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
+- Crop Y bounds assume the current layout (~2.1k px tall: GPU with clock-event dots, LLM NIM with power button + Q under name + Display bits, CPU clusters, Proc/Disk/Net, folded Docker chart, Fan/Swap/Board; `uma_dram.so` not enabled). After changing which metrics or plugins are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
 - The dock must fit on screen for the capture (a 4K display fits it at ~2.1k px); the script reads the window straight from the X root window.
 - `gkrellm-mem-zoom.png` was removed together with the default DRAM UMA panel; UMA % is the last row of the GPU block (`gkrellm-gpu.png`).
-- Engine status is the green/yellow/red/gray lamp on the **Nemotron** header row (right), not a separate Eng tile.
-- **`in` / `out`** under the header are session Prefill / Decode token totals for the current GKrellM dock process (see [PLUGINS.md](PLUGINS.md) · LLM NIM).
+- Engine status is the green/yellow/red/gray lamp on the model header row (rightmost). The **power button** (beveled, colour = stopped/starting/running) sits left of that lamp.
+- **`in` / `out`** under **Q** are session Prefill / Decode token totals for the current GKrellM dock process (see [PLUGINS.md](PLUGINS.md) · LLM NIM).

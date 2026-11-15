@@ -17,6 +17,8 @@ dist/
 .cursor/
 AGENTS.md
 CLAUDE.md
+tmp/
+docs/_preview-*.png
 
 # Editor / OS
 *.swp
@@ -27,3 +29,4 @@ CLAUDE.md
 .env
 .env.*
 *.log
+.superpowers/

@@ -28,8 +28,11 @@ Panel anchors (where each plugin lands in the monitor stack): `nvidia` — after
 | GPU Load chart | `nvmlDeviceGetUtilizationRates` (SM) | fixed 0–100 %, 2 grids × 50, 48 px, impulse bars, text `%u%%` |
 | GPU Clock chart | `nvmlDeviceGetClockInfo` (GFX) | **chart window 2400–2550 MHz** (out-of-window values clamped on the chart only), 2 grids × 75 = 150 MHz span, text shows raw `%uMHz` |
 | GPU Power chart | `nvmlDeviceGetPowerUsage` | fixed 0–100 W, 2 grids × 50, text shows raw `%uW` |
+| Clock-event dots | `nvmlDeviceGetCurrentClocksEventReasons` (+ supported mask) | six bare dots between Power and Temp/UMA; see below |
 | Temp row | `nvmlDeviceGetTemperature` | text `NN.N C`, one decimal (e.g. `45.0C`; source format `"%.01fC"`) |
 | UMA row | `/proc/meminfo` → used % = (Total − Available)/Total × 100, clamped 0–100 | text `%u%%` |
+
+**Clock-event dots** (always on; not part of the `272` text-row mask). L→R: Cap (`0x4` SW Power Cap), SWth (`0x20`), HWth (`0x40`), HWsl (`0x8`), Brk (`0x80`), App (`0x2`). Green = OK, red = Active with ~2.5 s latch, gray = unavailable. Hover tooltip = label + short description (same strings as `clock_event_dots.c`). Idle / Sync Boost / Display Clock Setting are not shown.
 
 NVML memory-usage values are unused on GB10 (UMA → N/A); the UMA row falls back to host `/proc/meminfo` when NVML reports nothing. Clocks above ~3003 MHz (NVML hardware max) are possible; the 2400–2550 window is intentional (default boost 2418 MHz, ~2500–2550 under load — wider windows peg or flatten the chart).
 
@@ -136,12 +139,12 @@ Discovery: `/sys/class/thermal/thermal_zone*/temp` + ACPI short name from the zo
 ### Disk
 
 - Composite device **Disk** only (per-disk charts disabled; the managed config still lists `nvme0n1` / `sda` device entries, flags off).
-- Fixed chart config: **5 × 40 MB/s = 200 MB/s** full scale (stock auto-scale is unreadable on NVMe).
+- **Auto-scale** chart. Label is live **`$r` / `$w`** only (no stuck `$M` / `200M` full-scale readout).
 
 ```text
 disk assign_method 2
 disk device Disk 0 0 0 1 1 0 0 Disk
-disk chart_config Disk 40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500
+disk chart_config Disk 40 1000000 5 1 0 1 : 0 0 0 0 500 : 0 0 0 0 500
 disk text_format \f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w
 disk device nvme0n1 0 0 28 0 1 -1 0 nvme0n1
 disk device sda 0 0 45 0 1 -1 0 sda
@@ -157,11 +160,13 @@ net ignore_patterns ^ppp[0-9]+$|^br-|^virbr|^tun|^tap|^veth
 net enables docker0 1 1 0
 net enables wlP9s9 1 1 0
 net enables enP7s7 1 1 0
+net text_format \f\ww\r\f$M\D2\f\ar\.$r\D1\f\at\.$t
 net_clusters pattern ^veth
 net_clusters label Docker
 ```
 
 - **Stock Net enabled:** physical NICs used on Spark (`wlP9s9`, `enP7s7`) and `docker0`.
+- Chart label: same `\ww` pattern as Disk — `$M` + RX `$r` / TX `$t` (IF name stays on the panel; not `$T`).
 - **Container `veth*`:** folded into one chart by `net_clusters.so` (no per-container `net enables` lines any more).
 - **Ignored by stock Net:** PPP, Docker compose bridges (`br-*`), virbr, tun/tap, `veth*`.
 - All `veth*` cookies under `~/.gkrellm2/data/net/` are removed on install; `ppp0` / `ppp0_disabled` cookies are dropped.
@@ -237,8 +242,9 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 |-----|-------|---------|
 | `disk assign_method` | `2` | Composite-only device assignment |
 | `disk device Disk` | `0 0 0 1 1 0 0 Disk` | Composite **Disk** device descriptor (fixed) |
-| `disk chart_config Disk` | `40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500` | Fixed chart: height 40, grid 40 MB/s (40000000 B/s), 5 grids → **200 MB/s** full scale; two data entries |
-| `disk text_format` | `\f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w` | Stock chart labels: max + **read `$r`** / **write `$w`** rates (a lone `$T` only shows the total) |
+| `disk chart_config Disk` | `40 1000000 5 1 0 1 : 0 0 0 0 500 : 0 0 0 0 500` | Height 40, 5 grids, auto from 1 MB/s seed |
+| `disk text_format` | `\f\ww\r\f$M\D2\f\ar\. $r\D1\f\aw\. $w` | `$M` + side-by-side **`$r`/`$w`** (`\ww` required) |
+| `net text_format` | `\f\ww\r\f$M\D2\f\ar\.$r\D1\f\at\.$t` | `$M` + `\ww` dual-field **RX/TX** |
 | `disk device nvme0n1` | `0 0 28 0 1 -1 0 nvme0n1` | Per-disk entry, off |
 | `disk device sda` | `0 0 45 0 1 -1 0 sda` | Per-disk entry, off |
 

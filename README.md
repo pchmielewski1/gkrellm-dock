@@ -28,14 +28,14 @@ It provides a ready-made set of **GKrellM plugins** plus the **`gb10-blue`** the
 
 | Area | What you get |
 |------|----------------|
-| **GPU** | NVML Load %, Clock (**2400–2550 MHz** chart window), Power W, Temp + UMA % |
-| **LLM NIM** | Live **vLLM/NIM**, **SGLang** or **TensorFold** Prometheus panel — auto-detect backend, 27 toggleable metrics, engine lamp, session **`in`**/**`out`** tokens, up to **4** scrape slots |
+| **GPU** | NVML Load %, Clock (**2400–2550 MHz** chart window), Power W, **6 clock-event dots** (Cap→App), Temp + UMA % |
+| **LLM NIM** | Live **vLLM/NIM**, **SGLang** or **TensorFold** Prometheus panel — auto-detect backend, 27 toggleable metrics, **power button** (start/stop) + engine lamp, **Q** under the name, session **`in`**/**`out`** tokens, up to **4** scrape slots |
 | **CPU** | Separate charts for Cortex-**X925** and Cortex-**A725** (not a single composite) |
 | **Memory** | **UMA %** in the GPU block (unified memory); stock **Swap** meter; the separate `uma_dram.so` panel is optional (off by default) |
 | **Board** | 7 ACPI thermal zones: TSOC, TGPU, TS0E, TS0P, TS1E, TS1P, TUNC |
-| **Disk** | Composite Disk chart, fixed **200 MB/s** full scale |
-| **Net** | `docker0` + physical NICs (stock, shown while up); every UP container **veth** folded into one `net_clusters` chart; PPP/bridge noise ignored |
-| **Theme** | `gb10-blue` — dark navy / cyan dock skin |
+| **Disk** | Composite Disk chart, **auto-scale** with 5 grid lines (live `$M` + `$r`/`$w`) |
+| **Net** | Physical NICs (stock) with **RX/TX** labels; every UP container **veth** folded into one `net_clusters` chart; PPP/bridge noise ignored |
+| **Theme** | `gb10-blue` — dark navy / ice cyan dock skin (beveled panel buttons) |
 | **Config** | Managed `~/.gkrellm2` config via one installer script (`scripts/install.sh`) |
 
 ---
@@ -96,12 +96,12 @@ Wayland-only sessions are **not** supported by window-placement tooling (GKrellM
 Typical order after a fresh install (plugin load order `nvidia → llm_nim → cpu_clusters → net_clusters → board_acpi`):
 
 1. Hostname / clock
-2. **GPU** — Load, Clock, Power, Temp + UMA % (`nvidia.so`)
-3. **LLM / NIM** — header + engine lamp + session **`in`**/**`out`** token totals + one strip per enabled Display bit (`llm_nim.so`)
+2. **GPU** — Load, Clock, Power, **clock-event dots**, Temp + UMA % (`nvidia.so`)
+3. **LLM / NIM** — header + **power button** + engine lamp → **Q** → session **`in`**/**`out`** → one strip per enabled Display bit (`llm_nim.so`)
 4. **CPU X925** / **CPU A725** (`cpu_clusters.so`)
-5. Proc / Disk (stock)
-6. **Net** — `docker0`, Wi‑Fi/Ethernet (stock) + one folded **Docker** chart for all container `veth*` (`net_clusters.so`)
-7. Swap + **Board** + Uptime (unified-memory % is the **UMA %** chart in the GPU block; the separate `uma_dram.so` panel is built but not enabled by default — it duplicated that chart)
+5. Proc / Disk (stock, auto-scale `$r`/`$w`)
+6. **Net** — Wi‑Fi/Ethernet (stock RX/TX) + one folded **Docker** chart for all container `veth*` (`net_clusters.so`)
+7. Fan / Swap + **Board** + Uptime (unified-memory % is the **UMA %** row in the GPU block; `uma_dram.so` is built but not enabled by default)
 
 ### Screenshot gallery
 
@@ -110,16 +110,16 @@ Every screenshot is a live capture from a running dock; the full catalog and re-
 | Region | What you see | Screenshot |
 |--------|----------------|------------|
 | Hostname / clock | Host id, calendar date, clock | ![top](docs/gkrellm-top.png) |
-| GPU | GPU Load, Clock, Power, Temp + UMA % (`NVIDIA GB10` block) | ![gpu](docs/gkrellm-gpu.png) |
-| GPU (zoom) | Closer view of the GPU charts | ![gpu-zoom](docs/gkrellm-gpu-zoom.png) |
-| LLM NIM | NIM header with model name + engine status lamp; session `in`/`out` token totals | ![llm](docs/gkrellm-llm.png) |
-| LLM NIM (full) | The complete LLM NIM panel — all enabled Display strips + LINE charts | ![llm-rows](docs/gkrellm-llm-rows.png) |
+| GPU | Load, Clock, Power, **6 clock-event dots**, Temp + UMA % (`NVIDIA GB10`) | ![gpu](docs/gkrellm-gpu.png) |
+| GPU (zoom) | Closer view of the GPU charts + dots | ![gpu-zoom](docs/gkrellm-gpu-zoom.png) |
+| LLM NIM | Header + **power button** + engine lamp; **Q** under the name; session `in`/`out` | ![llm](docs/gkrellm-llm.png) |
+| LLM NIM (full) | Full LLM panel — all enabled Display strips + LINE charts | ![llm-rows](docs/gkrellm-llm-rows.png) |
 | CPU | Both Grace clusters — **CPU X925** and **CPU A725** (one mini-band per core) | ![cpu](docs/gkrellm-cpu.png) |
 | CPU (X925) | Cortex-X925 cluster only | ![cpu-x925](docs/gkrellm-cpu-x925.png) |
 | CPU (A725) | Cortex-A725 cluster only | ![cpu-a725](docs/gkrellm-cpu-a725.png) |
 | Proc / users | Process/user counts and the Proc meter | ![proc-area](docs/gkrellm-proc-area.png) |
-| Disk / Net | Disk chart + stock net meter(s) (Wi‑Fi/Ethernet, `docker0` while up) + the folded **Docker** chart (all UP container `veth*`: in = cyan top band, out = amber bottom band) | ![net](docs/gkrellm-net.png) |
-| Bottom | Swap, Board thermals (TSOC…TUNC), Uptime | ![bottom](docs/gkrellm-bottom.png) |
+| Disk / Net | Auto-scale Disk (`$r`/`$w`) + stock NIC RX/TX + folded **Docker** chart (`net_clusters`) | ![net](docs/gkrellm-net.png) |
+| Bottom | Fan / Swap, Board thermals (TSOC…TUNC), Uptime | ![bottom](docs/gkrellm-bottom.png) |
 
 Vertical slices (top / middle / lower of the full dock):
 
@@ -135,8 +135,8 @@ Six plugins are built and installed by `scripts/install.sh` / `make install`:
 
 | Plugin | Panel | Data source |
 |--------|-------|-------------|
-| `nvidia.so` | NVIDIA GB10: Load, Clock, Power, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
-| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, lamp, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for the Dec rate (Zig engine: `live.decode_tokens_per_second`; Python engine: token counters) |
+| `nvidia.so` | NVIDIA GB10: Load, Clock, Power, clock-event dots, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
+| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, power button, lamp, Q, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for the Dec rate (Zig engine: `live.decode_tokens_per_second`; Python engine: token counters) |
 | `cpu_clusters.so` | CPU X925 / CPU A725 | `/proc/cpuinfo` + `/proc/stat` |
 | `net_clusters.so` | Docker — one chart (in/out bands) for **all** `veth*` interfaces, any number of containers | `/proc/net/dev` (rescanned every second) |
 | `uma_dram.so` | DRAM UMA (built/installed, **not enabled** by default — duplicates the GPU block's UMA %) | `/proc/meminfo` |

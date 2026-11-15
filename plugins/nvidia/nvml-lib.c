@@ -133,6 +133,12 @@ boolean initialize_gpulib(GKNVMLLib *lib)
 		(nvmlDeviceGetNumFans_fn)dlsym(lib->handle, "nvmlDeviceGetNumFans");
 	lib->nvmlDeviceGetFanSpeedRPM =
 		(nvmlDeviceGetFanSpeedRPM_fn)dlsym(lib->handle, "nvmlDeviceGetFanSpeedRPM");
+	lib->nvmlDeviceGetCurrentClocksEventReasons =
+		(nvmlDeviceGetCurrentClocksEventReasons_fn)dlsym(
+			lib->handle, "nvmlDeviceGetCurrentClocksEventReasons");
+	lib->nvmlDeviceGetSupportedClocksEventReasons =
+		(nvmlDeviceGetSupportedClocksEventReasons_fn)dlsym(
+			lib->handle, "nvmlDeviceGetSupportedClocksEventReasons");
 
 	if (res)
 		res = (lib->nvmlInit() == NVML_SUCCESS);

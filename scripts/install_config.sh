@@ -176,15 +176,18 @@ llm_nim features $LLM_FEATURES
 llm_nim chart_max_tps $LLM_TPS
 llm_nim chart_max_prefill $LLM_PREFILL
 llm_nim timeout_ms $LLM_TIMEOUT
-# Disk: composite only, fixed 5x40 MB/s = 200 MB/s full scale.
-# text_format must include \$r/\$w — a lone \$T only paints the total (e.g. "27K")
-# and hides read/write rates on the chart (stock GKrellM default restored).
+# Disk: composite only. Fields: h grid_res fixed_grids auto stick seq125.
+# 5 grids + auto from 1 MB/s seed → visible scale lines; \$M tracks live max
+# (old fixed 40MB×5=200M ceiling is gone).
+# \ww is required — without it \$r/\$w paint on the same origin (overlap).
 disk assign_method 2
 disk device Disk 0 0 0 1 1 0 0 Disk
-disk chart_config Disk 40 40000000 5 0 0 1 : 0 0 0 0 500 : 0 0 0 0 500
+disk chart_config Disk 40 1000000 5 1 0 1 : 0 0 0 0 500 : 0 0 0 0 500
 disk text_format \f\ww\r\f\$M\D2\f\ar\. \$r\D1\f\aw\. \$w
 disk device nvme0n1 0 0 28 0 1 -1 0 nvme0n1
 disk device sda 0 0 45 0 1 -1 0 sda
+# Net: same \ww dual-field pattern as Disk (\$M + RX/TX). Label lives on the panel.
+net text_format \f\ww\r\f\$M\D2\f\ar\.\$r\D1\f\at\.\$t
 EOF
 
 mv -f "$CFG_TMP" "$CFG"

@@ -271,10 +271,11 @@ Dock order = bit index: `Dec, KV, Q, Pre, TFT, Sp, Px, ITL, E2E, TP, Pr, Req, RS
 ## Dock panel anatomy
 
 ```text
-[Nemotron              ●]  header: title left, engine lamp right (9 px dot)
-[in           1.2M]        session prefill tokens since dock start
-[out          8.4M]        session decode tokens since dock start
-[Dec          27/s]        per-bit strip: tag left | value right
+[Nemotron         ⏻ ●]  header: title | power button | engine lamp
+[Q           R1/W0]     queue strip (when Display bit on) — under the name
+[in           1.2M]     session prefill tokens since dock start
+[out          8.4M]     session decode tokens since dock start
+[Dec          27/s]     per-bit strip: tag left | value right
 [~~~~~~~~ line chart ~~~~~~]   X = time (scrolls left→right), Y = value
 [KV           16%]
 [~~~~~~~~ line chart ~~~~~~]
@@ -284,7 +285,15 @@ Dock order = bit index: `Dec, KV, Q, Pre, TFT, Sp, Px, ITL, E2E, TP, Pr, Req, RS
 ### Header row
 
 - **Title** — `display_name` if set, else the shortened model name from the latest scrape, else the last known name, else `LLM`.
-- **Engine lamp** (right of the title; drawn only when bit 20 is set — header-only, the source never creates an `Eng` strip for it). Colors and states (9 px dot):
+- **Power button** — beveled 22×14 control (left of the engine lamp). Always present. Click runs `gkrellm-nim restart|stop --name <instance>` (Connection: instance name + optional helper path). Face colour = state only (no hover recolor):
+
+| Frame | Color | Meaning |
+|-------|-------|---------|
+| stopped | green `#2ecc71` | helper can start / instance down |
+| starting | yellow `#f1c40f` | start clicked; waiting for scrape up |
+| running | red `#e74c3c` | scrape OK — click stops |
+
+- **Engine lamp** (rightmost; drawn only when bit 20 is set — header-only, the source never creates an `Eng` strip for it). Colors and states (9 px dot):
 
 | Frame | Color | Meaning | Source |
 |-------|-------|---------|--------|
@@ -292,6 +301,10 @@ Dock order = bit index: `Dec, KV, Q, Pre, TFT, Sp, Px, ITL, E2E, TP, Pr, Req, RS
 | `LAMP_W1` | yellow `#f0c040` | `sleep_state="weights_offloaded"` | ditto |
 | `LAMP_W2` | red `#ff5555` | `sleep_state="discard_all"` | ditto |
 | `LAMP_DOWN` | gray `#6a7180` | down / unknown / no scrape | `ok == 0` or no state gauge |
+
+### Queue strip placement
+
+When Display bit **Q** is enabled, its strip is created **immediately under the header**, above the session `in`/`out` rows (other metric strips keep bit-index order after `out`).
 
 ### Session `in` / `out` rows (always on)
 

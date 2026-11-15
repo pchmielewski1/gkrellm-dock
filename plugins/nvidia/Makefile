@@ -4,7 +4,7 @@ CFLAGS += -std=c11
 LDFLAGS += -shared
 INSTALLFLAGS = -m755 -s
 
-SOURCES = nvidia.c nvml-lib.c
+SOURCES = nvidia.c nvml-lib.c clock_event_dots.c
 OBJECTS = $(SOURCES:.c=.o)
 TARGET = nvidia.so
 

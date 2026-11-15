@@ -173,6 +173,16 @@ typedef struct {
 	GkrellmDecal *title_decal;
 	GkrellmDecal *lamp_decal;
 	GdkPixmap *lamp_pm;
+	/* Power button (start/stop): green=stopped, yellow=starting, red=running.
+	 * Decalbutton with identical in/out frames → clickable, no hover recolor. */
+	GkrellmDecal *power_decal;
+	GkrellmDecalbutton *power_btn;
+	GdkPixmap *power_pm;
+	int power_frame;
+	int power_starting; /* 1 after start click until scrape up or timeout */
+	time_t power_starting_since;
+	char instance_name[64]; /* gkrellm-nim --name for dock power button */
+	char helper_path[256];  /* optional override; empty → PATH / ~/.local/bin */
 	/* Session token totals: in=prefill, out=decode (each own strip) */
 	GkrellmPanel *sess_in_panel;
 	GkrellmDecal *sess_in_label;
@@ -225,6 +235,8 @@ static Plugin P;
 
 static GtkWidget *cfg_url_entry;
 static GtkWidget *cfg_display_name_entry;
+static GtkWidget *cfg_instance_name_entry;
+static GtkWidget *cfg_helper_path_entry;
 static GtkWidget *cfg_ngc_entry;
 static GtkWidget *cfg_hf_entry;
 static GtkWidget *cfg_ngc_status_label;
@@ -317,6 +329,12 @@ static void rebuild_llm_ui(void);
 static void refresh_row_chart(gpointer data);
 static void update_compact_slots(void);
 static void sync_slot0_from_primary(void);
+static void cb_power_clicked(GkrellmDecalbutton *button, gpointer data);
+static int power_frame_now(void);
+static void power_apply_frame(int frame);
+static int run_helper_ex(char *const argv[], const char *stdin_data,
+                         int timeout_sec, int kill_on_timeout, char *out,
+                         size_t out_sz);
 
 typedef struct {
 	char *data;
@@ -1164,7 +1182,19 @@ enum {
 	LAMP_FRAMES
 };
 
+/* Power button frames (user palette: green=off, yellow=starting, red=on) */
+enum {
+	POWER_STOPPED = 0,
+	POWER_STARTING = 1,
+	POWER_RUNNING = 2,
+	POWER_FRAMES = 3
+};
+
 #define LAMP_SZ 9
+#define POWER_W 22
+#define POWER_H 14
+#define POWER_STARTING_TIMEOUT_SEC 90
+#define METRIC_IDX_QUEUE 2
 
 static GdkPixmap *make_lamp_pixmap(void)
 {
@@ -1194,6 +1224,67 @@ static GdkPixmap *make_lamp_pixmap(void)
 		gdk_gc_set_foreground(gc, &c[i]);
 		gdk_draw_arc(pm, gc, TRUE, 1, i * sz + 1, sz - 3, sz - 3, 0,
 		             360 * 64);
+	}
+	g_object_unref(gc);
+	return pm;
+}
+
+static GdkPixmap *make_power_pixmap(void)
+{
+	/* Raised beveled button with power glyph — not a lamp/flare.
+	 * One solid face color per state; in/out frames stay identical at runtime. */
+	GdkPixmap *pm;
+	GdkGC *gc;
+	GdkColormap *cmap;
+	GdkColor frame, face, hi, lo, glyph, c[POWER_FRAMES];
+	int i, y, cx, cy;
+	const int w = POWER_W, h = POWER_H;
+
+	pm = gdk_pixmap_new(NULL, w, h * POWER_FRAMES,
+	                    gdk_visual_get_system()->depth);
+	gc = gdk_gc_new(pm);
+	cmap = gdk_colormap_get_system();
+
+	gdk_color_parse("#050a12", &frame);
+	gdk_color_parse("#c8e0f0", &hi);
+	gdk_color_parse("#02060c", &lo);
+	gdk_color_parse("#0a1420", &glyph);
+	gdk_colormap_alloc_color(cmap, &frame, FALSE, TRUE);
+	gdk_colormap_alloc_color(cmap, &hi, FALSE, TRUE);
+	gdk_colormap_alloc_color(cmap, &lo, FALSE, TRUE);
+	gdk_colormap_alloc_color(cmap, &glyph, FALSE, TRUE);
+	gdk_color_parse("#2ecc71", &c[POWER_STOPPED]);  /* stopped = start */
+	gdk_color_parse("#f1c40f", &c[POWER_STARTING]); /* starting */
+	gdk_color_parse("#e74c3c", &c[POWER_RUNNING]);  /* running = stop */
+	for (i = 0; i < POWER_FRAMES; ++i)
+		gdk_colormap_alloc_color(cmap, &c[i], FALSE, TRUE);
+
+	for (i = 0; i < POWER_FRAMES; ++i) {
+		y = i * h;
+		face = c[i];
+		gdk_gc_set_foreground(gc, &frame);
+		gdk_draw_rectangle(pm, gc, TRUE, 0, y, w, h);
+		gdk_gc_set_foreground(gc, &face);
+		gdk_draw_rectangle(pm, gc, TRUE, 2, y + 2, w - 4, h - 4);
+		/* Raised bevel */
+		gdk_gc_set_foreground(gc, &hi);
+		gdk_draw_line(pm, gc, 1, y + 1, w - 2, y + 1);
+		gdk_draw_line(pm, gc, 1, y + 1, 1, y + h - 2);
+		gdk_draw_line(pm, gc, 2, y + 2, w - 3, y + 2);
+		gdk_draw_line(pm, gc, 2, y + 2, 2, y + h - 3);
+		gdk_gc_set_foreground(gc, &lo);
+		gdk_draw_line(pm, gc, 1, y + h - 2, w - 2, y + h - 2);
+		gdk_draw_line(pm, gc, w - 2, y + 1, w - 2, y + h - 2);
+		gdk_draw_line(pm, gc, 2, y + h - 3, w - 3, y + h - 3);
+		gdk_draw_line(pm, gc, w - 3, y + 2, w - 3, y + h - 3);
+		/* Power glyph: vertical stem + arc */
+		cx = w / 2;
+		cy = y + h / 2 + 1;
+		gdk_gc_set_foreground(gc, &glyph);
+		gdk_draw_line(pm, gc, cx, y + 3, cx, cy - 1);
+		gdk_draw_line(pm, gc, cx - 1, y + 3, cx - 1, cy - 1);
+		gdk_draw_arc(pm, gc, FALSE, cx - 5, cy - 5, 10, 10, 45 * 64,
+		             270 * 64);
 	}
 	g_object_unref(gc);
 	return pm;
@@ -1583,6 +1674,8 @@ static void destroy_ui_widgets(void)
 		P.header = NULL;
 		P.title_decal = NULL;
 		P.lamp_decal = NULL;
+		P.power_decal = NULL;
+		P.power_btn = NULL;
 	}
 	P.ui_built = 0;
 }
@@ -1749,6 +1842,16 @@ static void rebuild_llm_ui(void)
 	ts = gkrellm_meter_textstyle(P.style_id);
 	P.title_decal = gkrellm_create_decal_text(P.header, "NemotronXXXX", ts,
 	                                          style, -1, -1, -1);
+	/* Power button on header (start/stop); engine lamp optional */
+	if (!P.power_pm)
+		P.power_pm = make_power_pixmap();
+	P.power_decal = gkrellm_create_decal_pixmap(P.header, P.power_pm, NULL,
+	                                            POWER_FRAMES, style, -1,
+	                                            P.title_decal->y);
+	/* Same in/out frame → clickable Decalbutton without hover recolor. */
+	P.power_btn = gkrellm_make_decal_button(P.header, P.power_decal,
+	                                        cb_power_clicked, NULL,
+	                                        POWER_STOPPED, POWER_STOPPED);
 	if (P.features & FEAT_ENGINE) {
 		if (!P.lamp_pm)
 			P.lamp_pm = make_lamp_pixmap();
@@ -1761,6 +1864,10 @@ static void rebuild_llm_ui(void)
 	g_signal_connect(G_OBJECT(P.header->drawing_area), "expose_event",
 	                 G_CALLBACK(any_expose), NULL);
 
+	/* Q directly under name, above session in/out */
+	if ((P.features & FEAT_QUEUE) && METRICS[METRIC_IDX_QUEUE].bit == FEAT_QUEUE)
+		create_metric_row(METRIC_IDX_QUEUE);
+
 	/* Session totals since dock start: in=prefill, out=decode */
 	create_session_row(&P.sess_in_panel, &P.sess_in_label, &P.sess_in_value,
 	                   "in");
@@ -1770,6 +1877,9 @@ static void rebuild_llm_ui(void)
 	for (i = 0; i < N_FEATS; ++i) {
 		/* Engine bit drives header lamp only — no Eng tile */
 		if (METRICS[i].bit == FEAT_ENGINE)
+			continue;
+		/* Q already created above session rows */
+		if (METRICS[i].bit == FEAT_QUEUE)
 			continue;
 		if (P.features & METRICS[i].bit)
 			create_metric_row(i);
@@ -1856,16 +1966,30 @@ static void update_plugin(void)
 		P.title_decal->x = hm->left;
 		gkrellm_draw_decal_text(P.header, P.title_decal, (gchar *)title,
 		                        -1);
-		if (P.lamp_decal) {
-			P.lamp_decal->x = w - hm->left - hm->right - LAMP_SZ - 1;
-			if (P.lamp_decal->x < hm->left + 40)
-				P.lamp_decal->x = hm->left + 40;
-			P.lamp_decal->y = P.title_decal->y +
-			                  (P.title_decal->h - LAMP_SZ) / 2;
-			if (P.lamp_decal->y < 0)
-				P.lamp_decal->y = P.title_decal->y;
-			gkrellm_draw_decal_pixmap(P.header, P.lamp_decal,
-			                          engine_lamp_frame());
+		{
+			int right = w - hm->left - hm->right - 1;
+			int ydot = P.title_decal->y +
+			           (P.title_decal->h - POWER_H) / 2;
+			if (ydot < 0)
+				ydot = P.title_decal->y;
+
+			/* Engine status lamp (rightmost), then power button */
+			if (P.lamp_decal) {
+				P.lamp_decal->x = right - LAMP_SZ;
+				if (P.lamp_decal->x < hm->left + 40)
+					P.lamp_decal->x = hm->left + 40;
+				P.lamp_decal->y = ydot;
+				gkrellm_draw_decal_pixmap(P.header, P.lamp_decal,
+				                          engine_lamp_frame());
+				right = P.lamp_decal->x - 4;
+			}
+			if (P.power_decal) {
+				P.power_decal->x = right - POWER_W;
+				if (P.power_decal->x < hm->left + 40)
+					P.power_decal->x = hm->left + 40;
+				P.power_decal->y = ydot;
+				power_apply_frame(power_frame_now());
+			}
 		}
 		gkrellm_draw_panel_layers(P.header);
 	}
@@ -2074,6 +2198,15 @@ static void load_config(gchar *arg)
 		strncpy(P.display_name, val, sizeof(P.display_name) - 1);
 		P.display_name[sizeof(P.display_name) - 1] = '\0';
 		sync_slot0_from_primary();
+	} else if (!strcmp(key, "instance_name")) {
+		strncpy(P.instance_name, val, sizeof(P.instance_name) - 1);
+		P.instance_name[sizeof(P.instance_name) - 1] = '\0';
+		if (P.instance_name[0])
+			g_strlcpy(P.slots[0].name, P.instance_name,
+			          sizeof(P.slots[0].name));
+	} else if (!strcmp(key, "helper_path")) {
+		strncpy(P.helper_path, val, sizeof(P.helper_path) - 1);
+		P.helper_path[sizeof(P.helper_path) - 1] = '\0';
 	} else if (!strcmp(key, "dock_slots")) {
 		P.dock_slots_hint = atoi(val);
 		if (P.dock_slots_hint < 0)
@@ -2143,6 +2276,8 @@ static void save_config(FILE *f)
 	sync_slot0_from_primary();
 	fprintf(f, "%s url %s\n", CONFIG_KEYWORD, P.base_url);
 	fprintf(f, "%s display_name %s\n", CONFIG_KEYWORD, P.display_name);
+	fprintf(f, "%s instance_name %s\n", CONFIG_KEYWORD, P.instance_name);
+	fprintf(f, "%s helper_path %s\n", CONFIG_KEYWORD, P.helper_path);
 	fprintf(f, "%s dock_slots %d\n", CONFIG_KEYWORD,
 	        count_enabled_dock_slots());
 	for (i = 1; i < MAX_DOCK_SLOTS; ++i) {
@@ -2197,6 +2332,10 @@ static int find_gkrellm_nim(char *out, size_t out_sz)
 	const char *home;
 	char candidate[512];
 
+	if (P.helper_path[0] && access(P.helper_path, X_OK) == 0) {
+		g_strlcpy(out, P.helper_path, out_sz);
+		return 0;
+	}
 	found = g_find_program_in_path("gkrellm-nim");
 	if (found) {
 		g_strlcpy(out, found, out_sz);
@@ -2213,6 +2352,107 @@ static int find_gkrellm_nim(char *out, size_t out_sz)
 		}
 	}
 	return -1;
+}
+
+static const char *dock_instance_name(void)
+{
+	if (P.instance_name[0])
+		return P.instance_name;
+	if (P.slots[0].name[0])
+		return P.slots[0].name;
+	return "";
+}
+
+static int power_frame_now(void)
+{
+	time_t now = time(NULL);
+
+	if (P.power_starting) {
+		if (P.last.ok) {
+			P.power_starting = 0;
+			return POWER_RUNNING;
+		}
+		if (P.power_starting_since &&
+		    (now - P.power_starting_since) > POWER_STARTING_TIMEOUT_SEC) {
+			P.power_starting = 0;
+			return POWER_STOPPED;
+		}
+		return POWER_STARTING;
+	}
+	if (P.last.ok)
+		return POWER_RUNNING;
+	return POWER_STOPPED;
+}
+
+static void power_apply_frame(int frame)
+{
+	if (frame < 0 || frame >= POWER_FRAMES)
+		frame = POWER_STOPPED;
+	P.power_frame = frame;
+	if (P.header && P.power_decal)
+		gkrellm_draw_decal_pixmap(P.header, P.power_decal, frame);
+	/* Keep cur==pressed so click does not swap to another color frame. */
+	if (P.power_btn) {
+		P.power_btn->cur_index = frame;
+		P.power_btn->pressed_index = frame;
+		P.power_btn->saved_index = frame;
+	}
+}
+
+static void cb_power_clicked(GkrellmDecalbutton *button, gpointer data)
+{
+	const char *name;
+	char helper[512];
+	char out[4096];
+	char *argv[6];
+	int rc;
+	int running;
+
+	(void)button;
+	(void)data;
+
+	name = dock_instance_name();
+	if (!name || !*name) {
+		gkrellm_message_dialog(
+			_("LLM power"),
+			_("Set Instance name in Plugins → LLM NIM → Connection "
+			  "(or Use on dock from Instances)."));
+		return;
+	}
+	if (find_gkrellm_nim(helper, sizeof(helper)) < 0) {
+		gkrellm_message_dialog(
+			_("LLM power"),
+			_("gkrellm-nim not found. Set Helper path in Connection "
+			  "options, or install to ~/.local/bin."));
+		return;
+	}
+
+	running = (power_frame_now() == POWER_RUNNING);
+	argv[0] = helper;
+	argv[1] = running ? "stop" : "restart";
+	argv[2] = "--name";
+	argv[3] = (char *)name;
+	argv[4] = "--json";
+	argv[5] = NULL;
+
+	if (!running) {
+		P.power_starting = 1;
+		P.power_starting_since = time(NULL);
+		power_apply_frame(POWER_STARTING);
+		if (P.header)
+			gkrellm_draw_panel_layers(P.header);
+	}
+
+	rc = run_helper_ex(argv, NULL,
+	                   running ? HELPER_STOP_TIMEOUT_SEC
+	                           : HELPER_START_TIMEOUT_SEC,
+	                   running ? 1 : 0, out, sizeof(out));
+	if (rc != 0) {
+		P.power_starting = 0;
+		gkrellm_message_dialog(
+			_("LLM power"),
+			out[0] ? out : _("gkrellm-nim start/stop failed."));
+	}
 }
 
 static int ensure_config_dir(char *dir_out, size_t dir_sz)
@@ -5127,6 +5367,10 @@ static void cb_instance_use_on_dock(GtkWidget *button, gpointer data)
 			                   P.display_name);
 	}
 	g_strlcpy(P.slots[0].name, name, sizeof(P.slots[0].name));
+	g_strlcpy(P.instance_name, name, sizeof(P.instance_name));
+	if (cfg_instance_name_entry)
+		gtk_entry_set_text(GTK_ENTRY(cfg_instance_name_entry),
+		                   P.instance_name);
 	sync_slot0_from_primary();
 	best_effort_dock_show(name);
 	if (cfg_conn_link_label)
@@ -5609,6 +5853,16 @@ static void create_plugin_tab(GtkWidget *tab_vbox)
 	cfg_add_entry(conn, &cfg_url_entry, P.base_url, _("Base URL"));
 	cfg_add_entry(conn, &cfg_display_name_entry, P.display_name,
 	              _("Display name"));
+	cfg_add_entry(conn, &cfg_instance_name_entry,
+	              P.instance_name[0] ? P.instance_name : P.slots[0].name,
+	              _("Instance name (power button)"));
+	cfg_tip(cfg_instance_name_entry,
+	        _("gkrellm-nim --name for the header start/stop control. "
+	          "Also set by Instances → Use on dock."));
+	cfg_add_entry(conn, &cfg_helper_path_entry, P.helper_path,
+	              _("Helper path (optional)"));
+	cfg_tip(cfg_helper_path_entry,
+	        _("Full path to gkrellm-nim. Empty → PATH or ~/.local/bin."));
 	cfg_conn_link_label = gtk_label_new(_("Link: …"));
 	gtk_misc_set_alignment(GTK_MISC(cfg_conn_link_label), 0.0, 0.5);
 	gtk_label_set_line_wrap(GTK_LABEL(cfg_conn_link_label), TRUE);
@@ -5957,6 +6211,22 @@ static void apply_plugin_config(void)
 			g_strlcpy(P.display_name, s, sizeof(P.display_name));
 		else
 			P.display_name[0] = '\0';
+	}
+	if (cfg_instance_name_entry) {
+		s = gtk_entry_get_text(GTK_ENTRY(cfg_instance_name_entry));
+		if (s && *s) {
+			g_strlcpy(P.instance_name, s, sizeof(P.instance_name));
+			g_strlcpy(P.slots[0].name, s, sizeof(P.slots[0].name));
+		} else {
+			P.instance_name[0] = '\0';
+		}
+	}
+	if (cfg_helper_path_entry) {
+		s = gtk_entry_get_text(GTK_ENTRY(cfg_helper_path_entry));
+		if (s)
+			g_strlcpy(P.helper_path, s, sizeof(P.helper_path));
+		else
+			P.helper_path[0] = '\0';
 	}
 	sync_slot0_from_primary();
 	if (cfg_docs_release_entry) {

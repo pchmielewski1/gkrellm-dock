@@ -79,6 +79,8 @@ DECLARE_FUNCTION(nvmlDeviceGetMemoryInfo_v2, nvmlDevice_t, nvmlMemory_t*);
 DECLARE_FUNCTION(nvmlDeviceGetPciInfo, nvmlDevice_t, nvmlPciInfo_t*);
 DECLARE_FUNCTION(nvmlDeviceGetNumFans, nvmlDevice_t, uint*);
 DECLARE_FUNCTION(nvmlDeviceGetFanSpeedRPM, nvmlDevice_t, nvmlFan_t*);
+DECLARE_FUNCTION(nvmlDeviceGetCurrentClocksEventReasons, nvmlDevice_t, uint64*);
+DECLARE_FUNCTION(nvmlDeviceGetSupportedClocksEventReasons, nvmlDevice_t, uint64*);
 #undef DECLARE_FUNCTION
 
 typedef struct {
@@ -100,6 +102,9 @@ typedef struct {
 	nvmlDeviceGetPciInfo_fn nvmlDeviceGetPciInfo;
 	nvmlDeviceGetNumFans_fn nvmlDeviceGetNumFans;
 	nvmlDeviceGetFanSpeedRPM_fn nvmlDeviceGetFanSpeedRPM;
+	/* Optional — older NVML may omit clocks event reason APIs */
+	nvmlDeviceGetCurrentClocksEventReasons_fn nvmlDeviceGetCurrentClocksEventReasons;
+	nvmlDeviceGetSupportedClocksEventReasons_fn nvmlDeviceGetSupportedClocksEventReasons;
 } GKNVMLLib;
 
 boolean initialize_gpulib(GKNVMLLib *lib);

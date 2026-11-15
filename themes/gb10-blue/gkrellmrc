@@ -108,4 +108,6 @@ rx_led_x = 4
 rx_led_y = 2
 tx_led_x = -4
 tx_led_y = 2
+# false: stock Disk/Net labels get an opaque backplate (readable on data).
+# nvidia.so uses draw_chart_label (glyphs only) so GPU charts stay clean.
 chart_text_no_fill = false
