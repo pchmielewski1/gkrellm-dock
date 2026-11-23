@@ -97,7 +97,7 @@ Typical order after a fresh install (plugin load order `nvidia → llm_nim → c
 
 1. Hostname / clock
 2. **GPU** — Load, Clock, Power, **clock-event dots**, Temp + UMA % (`nvidia.so`)
-3. **LLM / NIM** — header + **power button** + engine lamp → **Q** → session **`in`**/**`out`** → one strip per enabled Display bit (`llm_nim.so`)
+3. **LLM / NIM** — header + **power button** + engine lamp → **Q** → session **`in`**/**`out`** → one strip per enabled Display bit; optional **Headroom** block (`llm_nim.so`)
 4. **CPU X925** / **CPU A725** (`cpu_clusters.so`)
 5. Proc / Disk (stock, auto-scale `$r`/`$w`)
 6. **Net** — Wi‑Fi/Ethernet (stock RX/TX) + one folded **Docker** chart for all container `veth*` (`net_clusters.so`)
@@ -113,7 +113,8 @@ Every screenshot is a live capture from a running dock; the full catalog and re-
 | GPU | Load, Clock, Power, **6 clock-event dots**, Temp + UMA % (`NVIDIA GB10`) | ![gpu](docs/gkrellm-gpu.png) |
 | GPU (zoom) | Closer view of the GPU charts + dots | ![gpu-zoom](docs/gkrellm-gpu-zoom.png) |
 | LLM NIM | Header + **power button** + engine lamp; **Q** under the name; session `in`/`out` | ![llm](docs/gkrellm-llm.png) |
-| LLM NIM (full) | Full LLM panel — all enabled Display strips + LINE charts | ![llm-rows](docs/gkrellm-llm-rows.png) |
+| LLM NIM (full) | Full LLM panel — enabled Display strips + LINE charts + **Headroom** | ![llm-rows](docs/gkrellm-llm-rows.png) |
+| Headroom | Compression proxy: **Q** F/Q, **Tok**, **Sav** %, **Lat**, **Req** total/failed | ![headroom](docs/gkrellm-headroom.png) |
 | CPU | Both Grace clusters — **CPU X925** and **CPU A725** (one mini-band per core) | ![cpu](docs/gkrellm-cpu.png) |
 | CPU (X925) | Cortex-X925 cluster only | ![cpu-x925](docs/gkrellm-cpu-x925.png) |
 | CPU (A725) | Cortex-A725 cluster only | ![cpu-a725](docs/gkrellm-cpu-a725.png) |
@@ -136,7 +137,7 @@ Six plugins are built and installed by `scripts/install.sh` / `make install`:
 | Plugin | Panel | Data source |
 |--------|-------|-------------|
 | `nvidia.so` | NVIDIA GB10: Load, Clock, Power, clock-event dots, Temp, UMA % | libNVML (`libnvidia-ml.so.1`) + `/proc/meminfo` |
-| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, power button, lamp, Q, `in`/`out`, 27 optional strips) | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** `vllm:*` when present; **SGLang** via `sglang:gen_throughput`, `token_usage`, or `prompt_tokens_total` (requires `--enable-metrics`); **TensorFold** via any `tensorfold:` family (engine ≥ 0.6.1) plus live `GET {url}/health` for the Dec rate (Zig engine: `live.decode_tokens_per_second`; Python engine: token counters) |
+| `llm_nim.so` | NIM / vLLM / SGLang / TensorFold panel (header, power button, lamp, Q, `in`/`out`, 27 optional strips) + optional **Headroom** JSON block | `GET {url}/metrics` (Prometheus), optional `GET {url}/v1/models` — **vLLM** / **SGLang** / **TensorFold** as before; **Headroom** via `GET {headroom_url}/stats?cached=1` + `/health` (JSON) |
 | `cpu_clusters.so` | CPU X925 / CPU A725 | `/proc/cpuinfo` + `/proc/stat` |
 | `net_clusters.so` | Docker — one chart (in/out bands) for **all** `veth*` interfaces, any number of containers | `/proc/net/dev` (rescanned every second) |
 | `uma_dram.so` | DRAM UMA (built/installed, **not enabled** by default — duplicates the GPU block's UMA %) | `/proc/meminfo` |

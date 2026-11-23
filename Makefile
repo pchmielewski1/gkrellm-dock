@@ -4,7 +4,7 @@ GKLIBS := $(shell pkg-config gkrellm --libs)
 PLUGIN_DIR ?= $(HOME)/.gkrellm2/plugins
 THEME_DIR ?= $(HOME)/.gkrellm2/themes
 
-LIB_SRCS := lib/cpu_map.c lib/cpu_stat.c lib/thermal_map.c
+LIB_SRCS := lib/cpu_map.c lib/cpu_stat.c lib/thermal_map.c lib/headroom_stats.c
 LIB_OBJS := $(LIB_SRCS:.c=.o)
 
 .PHONY: all clean test install unit plugins
@@ -21,6 +21,7 @@ build/libgkdock_test.so: $(LIB_SRCS)
 unit: build/libgkdock_test.so
 	python3 tests/test_cpu_map.py
 	python3 tests/test_clock_event_dots.py
+	python3 tests/test_headroom_stats.py
 
 plugins/cpu_clusters/cpu_clusters.so: plugins/cpu_clusters/cpu_clusters.c $(LIB_OBJS)
 	$(CC) $(CFLAGS) $(GKCFLAGS) -Ilib -shared -o $@ \
@@ -36,9 +37,10 @@ plugins/uma_dram/uma_dram.so: plugins/uma_dram/uma_dram.c
 plugins/net_clusters/net_clusters.so: plugins/net_clusters/net_clusters.c
 	$(CC) $(CFLAGS) $(GKCFLAGS) -shared -o $@ plugins/net_clusters/net_clusters.c $(GKLIBS)
 
-plugins/llm_nim/llm_nim.so: plugins/llm_nim/llm_nim.c
-	$(CC) $(CFLAGS) $(GKCFLAGS) $(shell pkg-config --cflags libcurl) -shared \
-		-o $@ plugins/llm_nim/llm_nim.c $(GKLIBS) $(shell pkg-config --libs libcurl)
+plugins/llm_nim/llm_nim.so: plugins/llm_nim/llm_nim.c lib/headroom_stats.c lib/headroom_stats.h
+	$(CC) $(CFLAGS) $(GKCFLAGS) $(shell pkg-config --cflags libcurl) -Ilib -shared \
+		-o $@ plugins/llm_nim/llm_nim.c lib/headroom_stats.c $(GKLIBS) \
+		$(shell pkg-config --libs libcurl)
 
 plugins/nvidia/nvidia.so:
 	$(MAKE) -C plugins/nvidia

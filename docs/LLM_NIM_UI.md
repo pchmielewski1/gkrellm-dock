@@ -199,13 +199,29 @@ Buttons (rows as laid out in the UI):
 
 ![LLM NIM Options tab](configure-llm-options.png)
 
-Three spinbuttons (no buttons):
+Three spinbuttons, then a framed **` Headroom proxy `** block:
 
 | Label (verbatim) | Config key | Default | Range (min–max), step, page increment |
 |------------------|------------|---------|----------------------------------------|
 | `Decode chart max (t/s)` | `llm_nim chart_max_tps` | `50` | 5–5000, step 1, page 10 (clamped to ≥ 5 on apply) |
 | `Prefill chart max (t/s)` | `llm_nim chart_max_prefill` | `1000` | 50–100000, step 10, page 100 (clamped to ≥ 50 on apply) |
 | `Scrape timeout (ms)` | `llm_nim timeout_ms` | `500` | 100–5000, step 50, page 100 (clamped to 100–5000 on apply) |
+
+**` Headroom proxy `** (optional second dock block under the NIM panel):
+
+| Control (verbatim) | Config key | Default | What it does |
+|--------------------|------------|---------|--------------|
+| `Enable Headroom dock block` | `llm_nim headroom_enable` | `0` | Show/hide the Headroom header + strips |
+| `Headroom base URL` | `llm_nim headroom_url` | `http://127.0.0.1:8788` | Proxy root; plugin scrapes `/stats?cached=1` + `/health` (JSON, not Prometheus) |
+| `Headroom display name` | `llm_nim headroom_name` | `Headroom` | Header title |
+| `Compress workers F/Q` | bit in `headroom_features` | on | Dock `Q` `F…/Q…` (in_flight / queued) |
+| `Tokens saved` | bit | on | Dock `Tok` |
+| `Compression savings %` | bit | on | Dock `Sav` `…%` (text only, no chart) |
+| `Proxy latency (avg)` | bit | on | Dock `Lat` ms/s (text only, no chart) |
+| `Requests / failed` | bit | on | Dock `Req` `total/failed` |
+| `Status lamp (header)` | bit | on | Green/gray lamp on Headroom header |
+
+`headroom_features` default `63` = all six bits (Q, Tok, Sav, Lat, Req, Eng). Dock order under the Headroom name: **Q → Tok → Sav → Lat → Req**.
 
 `Decode chart max` is the fixed full scale of the Dec (TX) chart. `Prefill chart max` is the *base* scale of the Pre (RX) chart, which auto-adapts upward to recent peaks (see Dock panel anatomy).
 
@@ -280,6 +296,12 @@ Dock order = bit index: `Dec, KV, Q, Pre, TFT, Sp, Px, ITL, E2E, TP, Pr, Req, RS
 [KV           16%]
 [~~~~~~~~ line chart ~~~~~~]
 … one panel strip per enabled non-engine bit …
+[Headroom            ●]  optional — Options → Headroom proxy
+[Q          F0/Q0]       compress workers in_flight / queued
+[Tok       419.8k]       tokens.saved
+[Sav         2.2%]       tokens.savings_percent (text only)
+[Lat        694ms]       latency.average_ms (text only)
+[Req        735/1]       requests.total / requests.failed
 ```
 
 ### Header row

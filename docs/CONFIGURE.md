@@ -44,7 +44,7 @@ Full field-by-field reference with helper subcommands: **[LLM_NIM_UI.md](LLM_NIM
 | **Local** | [configure-llm-local.png](configure-llm-local.png) | Local Docker images, profile discovery, create recipe. |
 | **Recipes** | [configure-llm-recipes.png](configure-llm-recipes.png) | Edit/start/export launch recipes (JSON). |
 | **Instances** | [configure-llm-instances.png](configure-llm-instances.png) | Running containers, logs, dock slot wiring. |
-| **Options** | [configure-llm-options.png](configure-llm-options.png) | Chart scales + HTTP scrape timeout. |
+| **Options** | [configure-llm-options.png](configure-llm-options.png) | Chart scales + HTTP scrape timeout + **Headroom proxy** block. |
 | **Display** | [configure-llm-display.png](configure-llm-display.png) | 27 checkboxes → dock metric strips (live toggle). |
 
 ### Connection — quick map
@@ -125,7 +125,11 @@ Full field-by-field reference with helper subcommands: **[LLM_NIM_UI.md](LLM_NIM
 |-------|---------|
 | **Decode chart max (t/s)** | Full scale of Dec (TX) chart. Default 50. |
 | **Prefill chart max (t/s)** | Base scale of Pre (RX) chart (auto-grows on peaks). Default 1000. |
-| **Scrape timeout (ms)** | HTTP timeout for `/metrics`. Default 500. |
+| **Scrape timeout (ms)** | HTTP timeout for `/metrics` (and Headroom JSON). Default 500. |
+| **Enable Headroom dock block** | Second panel under NIM for a Headroom compression proxy. |
+| **Headroom base URL** | Proxy root (default `http://127.0.0.1:8788`). Scrapes `/stats` + `/health`. |
+| **Headroom display name** | Header title (default `Headroom`). |
+| **Headroom metric checkboxes** | Q / Tok / Sav / Lat / Req / status lamp (text-only strips). |
 
 ### Display — quick map
 

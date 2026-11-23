@@ -20,6 +20,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "headroom_stats.h"
+
 #define STYLE_NAME "llm_nim"
 #define CONFIG_KEYWORD "llm_nim"
 #define ROW_CHART_H 40
@@ -78,6 +80,21 @@
 
 #define MAX_DOCK_SLOTS 4
 #define COMPACT_FEATURES (FEAT_TPS | FEAT_KV | FEAT_QUEUE | FEAT_ENGINE)
+
+/* Headroom proxy (JSON /stats + /health) — second dock block */
+#define N_HR_FEATS 5
+#define DEFAULT_HR_URL "http://127.0.0.1:8788"
+#define DEFAULT_HR_NAME "Headroom"
+#define HR_FEAT_SAV (1u << 0)
+#define HR_FEAT_LAT (1u << 1)
+#define HR_FEAT_TOK (1u << 2)
+#define HR_FEAT_Q (1u << 3)
+#define HR_FEAT_FAIL (1u << 4)
+#define HR_FEAT_ENG (1u << 5)
+#define DEFAULT_HR_FEATURES \
+	(HR_FEAT_SAV | HR_FEAT_LAT | HR_FEAT_TOK | HR_FEAT_Q | HR_FEAT_FAIL | \
+	 HR_FEAT_ENG)
+#define HR_LAT_FULL_MS 5000.0
 
 typedef enum {
 	MK_TEXT = 0,
@@ -229,6 +246,17 @@ typedef struct {
 	/* slots[0] mirrors base_url / display_name; 1..3 are compact extras */
 	DockSlot slots[MAX_DOCK_SLOTS];
 	int dock_slots_hint;
+
+	/* Headroom compression proxy (optional second block) */
+	int hr_enable;
+	char hr_url[256];
+	char hr_name[64];
+	guint hr_features;
+	GkHeadroomStats hr_last;
+	GkrellmPanel *hr_header;
+	GkrellmDecal *hr_title_decal;
+	GkrellmDecal *hr_lamp_decal;
+	MetricRow hr_rows[N_HR_FEATS];
 } Plugin;
 
 static Plugin P;
@@ -279,6 +307,10 @@ static GtkWidget *cfg_spin_tps;
 static GtkWidget *cfg_spin_prefill;
 static GtkWidget *cfg_spin_timeout;
 static GtkWidget *cfg_feat_btn[N_FEATS];
+static GtkWidget *cfg_hr_enable_btn;
+static GtkWidget *cfg_hr_url_entry;
+static GtkWidget *cfg_hr_name_entry;
+static GtkWidget *cfg_hr_feat_btn[N_HR_FEATS + 1]; /* +1 Eng lamp */
 
 static int json_extract_string_after(const char *json, const char *after,
                                      const char *key, char *out, size_t out_sz);
@@ -325,10 +357,24 @@ static const MetricDef METRICS[N_FEATS] = {
 	{ FEAT_INFER_T, MK_KRELL_LAT, "Rn", "Inference phase time", 30.0 },
 };
 
+/* Dock order: Q under name, then Tok, Sav, Lat, Req (text-only — no charts). */
+static const MetricDef HR_METRICS[N_HR_FEATS] = {
+	{ HR_FEAT_Q, MK_TEXT, "Q", "Compress workers F/Q", 0 },
+	{ HR_FEAT_TOK, MK_TEXT, "Tok", "Tokens saved", 0 },
+	{ HR_FEAT_SAV, MK_TEXT, "Sav", "Compression savings %", 0 },
+	{ HR_FEAT_LAT, MK_TEXT, "Lat", "Proxy latency (avg)", 0 },
+	{ HR_FEAT_FAIL, MK_TEXT, "Req", "Requests / failed", 0 },
+};
+
 static void rebuild_llm_ui(void);
 static void refresh_row_chart(gpointer data);
+static void refresh_hr_row_chart(gpointer data);
 static void update_compact_slots(void);
 static void sync_slot0_from_primary(void);
+static void destroy_headroom_ui(void);
+static void create_headroom_ui(void);
+static void update_headroom(void);
+static int fetch_headroom(GkHeadroomStats *out);
 static void cb_power_clicked(GkrellmDecalbutton *button, gpointer data);
 static int power_frame_now(void);
 static void power_apply_frame(int frame);
@@ -1610,6 +1656,17 @@ static gint any_expose(GtkWidget *widget, GdkEventExpose *ev)
 		else if (r->chart && r->chart->drawing_area == widget)
 			pixmap = r->chart->pixmap;
 	}
+	if (!pixmap && P.hr_header && P.hr_header->drawing_area == widget)
+		pixmap = P.hr_header->pixmap;
+	for (i = 0; !pixmap && i < N_HR_FEATS; ++i) {
+		MetricRow *r = &P.hr_rows[i];
+		if (!r->alive)
+			continue;
+		if (r->panel && r->panel->drawing_area == widget)
+			pixmap = r->panel->pixmap;
+		else if (r->chart && r->chart->drawing_area == widget)
+			pixmap = r->chart->pixmap;
+	}
 	if (pixmap)
 		gdk_draw_pixmap(widget->window,
 		                widget->style->fg_gc[GTK_WIDGET_STATE(widget)],
@@ -1677,6 +1734,7 @@ static void destroy_ui_widgets(void)
 		P.power_decal = NULL;
 		P.power_btn = NULL;
 	}
+	destroy_headroom_ui();
 	P.ui_built = 0;
 }
 
@@ -1825,6 +1883,300 @@ static void create_compact_slot_ui(DockSlot *s)
 	s->ui_alive = 1;
 }
 
+static int fetch_headroom(GkHeadroomStats *out)
+{
+	char url[320];
+	char *body = NULL;
+	GkHeadroomStats st;
+
+	if (!out || !P.hr_url[0])
+		return -1;
+	memset(&st, 0, sizeof(st));
+
+	snprintf(url, sizeof(url), "%s/stats?cached=1", P.hr_url);
+	if (http_get(url, &body) != 0 || !body) {
+		free(body);
+		return -1;
+	}
+	if (gk_headroom_parse_stats(body, &st) != 0) {
+		free(body);
+		return -1;
+	}
+	free(body);
+	body = NULL;
+
+	snprintf(url, sizeof(url), "%s/health", P.hr_url);
+	if (http_get(url, &body) == 0 && body)
+		gk_headroom_parse_health(body, &st);
+	free(body);
+
+	*out = st;
+	return st.ok ? 0 : -1;
+}
+
+static void hr_metric_value(int idx, char *buf, size_t buflen, double *raw,
+                            double *full)
+{
+	const MetricDef *d = &HR_METRICS[idx];
+	GkHeadroomStats *s = &P.hr_last;
+
+	*raw = 0;
+	*full = 100;
+	if (!s->ok) {
+		snprintf(buf, buflen, "down");
+		return;
+	}
+	switch (d->bit) {
+	case HR_FEAT_SAV:
+		*raw = s->savings_percent;
+		*full = 100;
+		snprintf(buf, buflen, "%.1f%%", s->savings_percent);
+		break;
+	case HR_FEAT_LAT:
+		*raw = s->latency_avg_ms / 1000.0;
+		*full = d->lat_full > 0 ? d->lat_full : 5.0;
+		if (s->latency_avg_ms < 1000.0)
+			snprintf(buf, buflen, "%.0fms", s->latency_avg_ms);
+		else
+			snprintf(buf, buflen, "%.1fs", s->latency_avg_ms / 1000.0);
+		break;
+	case HR_FEAT_TOK:
+		if (s->tokens_saved >= 1000000.0)
+			snprintf(buf, buflen, "%.1fM", s->tokens_saved / 1000000.0);
+		else if (s->tokens_saved >= 1000.0)
+			snprintf(buf, buflen, "%.1fk", s->tokens_saved / 1000.0);
+		else
+			snprintf(buf, buflen, "%.0f", s->tokens_saved);
+		break;
+	case HR_FEAT_Q:
+		snprintf(buf, buflen, "F%.0f/Q%.0f", s->workers_in_flight,
+		         s->workers_queued);
+		break;
+	case HR_FEAT_FAIL:
+		snprintf(buf, buflen, "%.0f/%.0f", s->requests_total,
+		         s->requests_failed);
+		break;
+	default:
+		snprintf(buf, buflen, "?");
+		break;
+	}
+}
+
+static void refresh_hr_row_chart(gpointer data)
+{
+	int idx = GPOINTER_TO_INT(data);
+	MetricRow *r;
+	char buf[40];
+	double raw, full;
+
+	if (idx < 0 || idx >= N_HR_FEATS)
+		return;
+	r = &P.hr_rows[idx];
+	if (!r->chart)
+		return;
+	gkrellm_draw_chartdata(r->chart);
+	hr_metric_value(idx, buf, sizeof(buf), &raw, &full);
+	gkrellm_draw_chart_text(r->chart, P.chart_style_id, buf);
+	gkrellm_draw_chart_to_screen(r->chart);
+}
+
+static void destroy_headroom_ui(void)
+{
+	int i;
+
+	for (i = 0; i < N_HR_FEATS; ++i) {
+		MetricRow *r = &P.hr_rows[i];
+		if (r->chart) {
+			gkrellm_chart_destroy(r->chart);
+			r->chart = NULL;
+			r->chart_cfg = NULL;
+			r->cd = NULL;
+		}
+		if (r->panel) {
+			gkrellm_panel_destroy(r->panel);
+			r->panel = NULL;
+		}
+		r->label_decal = NULL;
+		r->value_decal = NULL;
+		r->alive = 0;
+	}
+	if (P.hr_header) {
+		gkrellm_panel_destroy(P.hr_header);
+		P.hr_header = NULL;
+		P.hr_title_decal = NULL;
+		P.hr_lamp_decal = NULL;
+	}
+}
+
+static void create_hr_metric_row(int idx)
+{
+	const MetricDef *d = &HR_METRICS[idx];
+	MetricRow *r = &P.hr_rows[idx];
+	GkrellmStyle *style;
+	GkrellmTextstyle *ts;
+	GkrellmPanel *p;
+	GkrellmChart *cp;
+
+	r->panel = gkrellm_panel_new0();
+	p = r->panel;
+	style = gkrellm_meter_style(P.style_id);
+	ts = gkrellm_meter_textstyle(P.style_id);
+	r->label_decal =
+	    gkrellm_create_decal_text(p, (gchar *)d->tag, ts, style, -1, -1, -1);
+	r->value_decal = gkrellm_create_decal_text(p, "9999.9ms", ts, style, -1,
+	                                           r->label_decal->y, -1);
+	gkrellm_panel_configure(p, NULL, style);
+	gkrellm_panel_create(P.main_vbox, P.monitor, p);
+	g_signal_connect(G_OBJECT(p->drawing_area), "expose_event",
+	                 G_CALLBACK(any_expose), NULL);
+
+	if (d->kind != MK_TEXT) {
+		r->chart = gkrellm_chart_new0();
+		r->chart->panel = NULL;
+		cp = r->chart;
+		gkrellm_set_chart_height_default(cp, ROW_CHART_H);
+		gkrellm_chart_create(P.main_vbox, P.monitor, cp, &r->chart_cfg);
+		gkrellm_set_draw_chart_function(cp, refresh_hr_row_chart,
+		                                GINT_TO_POINTER(idx));
+		r->cd = gkrellm_add_default_chartdata(cp, (gchar *)d->tag);
+		gkrellm_monotonic_chartdata(r->cd, FALSE);
+		gkrellm_set_chartdata_draw_style_default(r->cd, CHARTDATA_LINE);
+		gkrellm_set_chartdata_draw_style(r->cd, CHARTDATA_LINE);
+		gkrellm_set_chartdata_flags(r->cd, CHARTDATA_NO_CONFIG);
+		gkrellm_set_chartconfig_auto_grid_resolution(cp->config, FALSE);
+		gkrellm_set_chartconfig_fixed_grids(cp->config, 2);
+		gkrellm_set_chartconfig_grid_resolution(cp->config, 50);
+		gkrellm_alloc_chartdata(cp);
+		gkrellm_set_chart_height(cp, ROW_CHART_H);
+		g_signal_connect(G_OBJECT(cp->drawing_area), "expose_event",
+		                 G_CALLBACK(any_expose), NULL);
+	}
+	r->alive = 1;
+}
+
+static void create_headroom_ui(void)
+{
+	GkrellmStyle *style;
+	GkrellmTextstyle *ts;
+	int i;
+
+	if (!P.hr_enable || !P.hr_url[0] || !P.main_vbox || !P.monitor)
+		return;
+
+	destroy_headroom_ui();
+
+	P.hr_header = gkrellm_panel_new0();
+	style = gkrellm_panel_style(P.style_id);
+	ts = gkrellm_meter_textstyle(P.style_id);
+	P.hr_title_decal = gkrellm_create_decal_text(P.hr_header, "HeadroomXXXX",
+	                                             ts, style, -1, -1, -1);
+	if (P.hr_features & HR_FEAT_ENG) {
+		if (!P.lamp_pm)
+			P.lamp_pm = make_lamp_pixmap();
+		P.hr_lamp_decal = gkrellm_create_decal_pixmap(
+		    P.hr_header, P.lamp_pm, NULL, LAMP_FRAMES, style, -1,
+		    P.hr_title_decal->y);
+	}
+	gkrellm_panel_configure(P.hr_header, NULL, style);
+	gkrellm_panel_create(P.main_vbox, P.monitor, P.hr_header);
+	g_signal_connect(G_OBJECT(P.hr_header->drawing_area), "expose_event",
+	                 G_CALLBACK(any_expose), NULL);
+
+	/* Q directly under Headroom name, then Tok / Sav / Lat / Req */
+	for (i = 0; i < N_HR_FEATS; ++i) {
+		if (P.hr_features & HR_METRICS[i].bit)
+			create_hr_metric_row(i);
+	}
+}
+
+static void update_headroom(void)
+{
+	GkHeadroomStats snap;
+	GkrellmStyle *style;
+	GkrellmMargin *m;
+	int i, w, w_text;
+	const char *title;
+
+	if (!P.hr_enable || !P.hr_url[0])
+		return;
+
+	if (fetch_headroom(&snap) != 0)
+		P.hr_last.ok = 0;
+	else
+		P.hr_last = snap;
+
+	if (!P.hr_header || !P.hr_title_decal)
+		return;
+
+	{
+		GkrellmStyle *hstyle = gkrellm_panel_style(P.style_id);
+		GkrellmMargin *hm = gkrellm_get_style_margins(hstyle);
+
+		w = gkrellm_chart_width();
+		if (P.hr_name[0])
+			title = P.hr_name;
+		else if (P.hr_last.ok && P.hr_last.primary_model[0])
+			title = P.hr_last.primary_model;
+		else
+			title = DEFAULT_HR_NAME;
+		P.hr_title_decal->x = hm->left;
+		gkrellm_draw_decal_text(P.hr_header, P.hr_title_decal,
+		                        (gchar *)title, -1);
+		if (P.hr_lamp_decal) {
+			P.hr_lamp_decal->x =
+			    w - hm->left - hm->right - LAMP_SZ - 1;
+			if (P.hr_lamp_decal->x < hm->left + 40)
+				P.hr_lamp_decal->x = hm->left + 40;
+			P.hr_lamp_decal->y =
+			    P.hr_title_decal->y +
+			    (P.hr_title_decal->h - LAMP_SZ) / 2;
+			if (P.hr_lamp_decal->y < 0)
+				P.hr_lamp_decal->y = P.hr_title_decal->y;
+			gkrellm_draw_decal_pixmap(
+			    P.hr_header, P.hr_lamp_decal,
+			    P.hr_last.ok && P.hr_last.healthy ? LAMP_AWAKE
+			                                      : LAMP_DOWN);
+		}
+		gkrellm_draw_panel_layers(P.hr_header);
+	}
+
+	style = gkrellm_meter_style(P.style_id);
+	m = gkrellm_get_style_margins(style);
+	for (i = 0; i < N_HR_FEATS; ++i) {
+		MetricRow *r = &P.hr_rows[i];
+		const MetricDef *d = &HR_METRICS[i];
+		char buf[48];
+		double raw, full;
+		gulong yu;
+
+		if (!r->alive || !r->panel)
+			continue;
+		hr_metric_value(i, buf, sizeof(buf), &raw, &full);
+		w = gkrellm_chart_width();
+		if (r->label_decal) {
+			r->label_decal->x = m->left;
+			gkrellm_draw_decal_text(r->panel, r->label_decal,
+			                        (gchar *)d->tag, -1);
+		}
+		if (r->value_decal) {
+			w_text = gkrellm_gdk_string_width(
+			    r->value_decal->text_style.font, buf);
+			r->value_decal->x =
+			    w - m->left - m->right - w_text - 1;
+			if (r->value_decal->x < m->left + 24)
+				r->value_decal->x = m->left + 24;
+			gkrellm_draw_decal_text(r->panel, r->value_decal, buf,
+			                        -1);
+		}
+		gkrellm_draw_panel_layers(r->panel);
+		if (r->chart && r->cd) {
+			yu = krell_units(d, raw, full);
+			gkrellm_store_chartdata(r->chart, 100UL, yu);
+			refresh_hr_row_chart(GINT_TO_POINTER(i));
+		}
+	}
+}
+
 static void rebuild_llm_ui(void)
 {
 	int i;
@@ -1890,6 +2242,8 @@ static void rebuild_llm_ui(void)
 		if (P.slots[i].enabled)
 			create_compact_slot_ui(&P.slots[i]);
 	}
+
+	create_headroom_ui();
 
 	P.ui_built = 1;
 	gkrellm_spacers_set_types(P.monitor, GKRELLM_SPACER_CHART,
@@ -2070,6 +2424,7 @@ static void update_plugin(void)
 	}
 
 	update_compact_slots();
+	update_headroom();
 }
 
 static void update_compact_slot(int idx)
@@ -2250,6 +2605,15 @@ static void load_config(gchar *arg)
 			P.timeout_ms = 100;
 		if (P.timeout_ms > 5000)
 			P.timeout_ms = 5000;
+	} else if (!strcmp(key, "headroom_enable")) {
+		P.hr_enable = atoi(val) ? 1 : 0;
+	} else if (!strcmp(key, "headroom_url")) {
+		g_strlcpy(P.hr_url, val, sizeof(P.hr_url));
+		normalize_loopback_url(P.hr_url);
+	} else if (!strcmp(key, "headroom_name")) {
+		g_strlcpy(P.hr_name, val, sizeof(P.hr_name));
+	} else if (!strcmp(key, "headroom_features")) {
+		P.hr_features = (guint)strtoul(val, NULL, 10);
 	}
 }
 
@@ -2296,6 +2660,12 @@ static void save_config(FILE *f)
 	fprintf(f, "%s chart_max_prefill %u\n", CONFIG_KEYWORD,
 	        P.chart_max_prefill);
 	fprintf(f, "%s timeout_ms %u\n", CONFIG_KEYWORD, P.timeout_ms);
+	fprintf(f, "%s headroom_enable %d\n", CONFIG_KEYWORD, P.hr_enable ? 1 : 0);
+	fprintf(f, "%s headroom_url %s\n", CONFIG_KEYWORD,
+	        P.hr_url[0] ? P.hr_url : DEFAULT_HR_URL);
+	fprintf(f, "%s headroom_name %s\n", CONFIG_KEYWORD,
+	        P.hr_name[0] ? P.hr_name : DEFAULT_HR_NAME);
+	fprintf(f, "%s headroom_features %u\n", CONFIG_KEYWORD, P.hr_features);
 }
 
 static void cfg_add_entry(GtkWidget *box, GtkWidget **entry, const char *text,
@@ -6143,6 +6513,30 @@ static void create_plugin_tab(GtkWidget *tab_vbox)
 	                        _("Scrape timeout (ms)"));
 	cfg_spin_timeout = spin;
 
+	frame = gkrellm_gtk_framed_vbox(opt, _(" Headroom proxy "), 2, TRUE, 4,
+	                               4);
+	gkrellm_gtk_check_button_connected(
+	    frame, &cfg_hr_enable_btn, P.hr_enable, FALSE, FALSE, 0, NULL, NULL,
+	    _("Enable Headroom dock block"));
+	cfg_add_entry(frame, &cfg_hr_url_entry,
+	              P.hr_url[0] ? P.hr_url : DEFAULT_HR_URL,
+	              _("Headroom base URL"));
+	cfg_add_entry(frame, &cfg_hr_name_entry,
+	              P.hr_name[0] ? P.hr_name : DEFAULT_HR_NAME,
+	              _("Headroom display name"));
+	memset(cfg_hr_feat_btn, 0, sizeof(cfg_hr_feat_btn));
+	for (j = 0; j < N_HR_FEATS; ++j) {
+		gkrellm_gtk_check_button_connected(
+		    frame, &btn,
+		    (P.hr_features & HR_METRICS[j].bit) != 0, FALSE, FALSE, 0,
+		    NULL, NULL, (gchar *)HR_METRICS[j].cfg_label);
+		cfg_hr_feat_btn[j] = btn;
+	}
+	gkrellm_gtk_check_button_connected(
+	    frame, &btn, (P.hr_features & HR_FEAT_ENG) != 0, FALSE, FALSE, 0,
+	    NULL, NULL, _("Status lamp (header)"));
+	cfg_hr_feat_btn[N_HR_FEATS] = btn;
+
 	disp = gkrellm_gtk_framed_notebook_page(tabs, _(" Display "));
 	memset(cfg_feat_btn, 0, sizeof(cfg_feat_btn));
 
@@ -6267,9 +6661,56 @@ static void apply_plugin_config(void)
 		    gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(cfg_feat_btn[i])))
 			feats |= METRICS[i].bit;
 	}
-	if (feats != P.features) {
+	{
+		int hr_en = P.hr_enable;
+		char hr_url_prev[256];
+		char hr_name_prev[64];
+		guint hr_feats = 0;
+		int rebuild = 0;
+
+		g_strlcpy(hr_url_prev, P.hr_url, sizeof(hr_url_prev));
+		g_strlcpy(hr_name_prev, P.hr_name, sizeof(hr_name_prev));
+
+		if (cfg_hr_enable_btn)
+			hr_en = gtk_toggle_button_get_active(
+			            GTK_TOGGLE_BUTTON(cfg_hr_enable_btn))
+			            ? 1
+			            : 0;
+		if (cfg_hr_url_entry) {
+			s = gtk_entry_get_text(GTK_ENTRY(cfg_hr_url_entry));
+			if (s && *s) {
+				g_strlcpy(P.hr_url, s, sizeof(P.hr_url));
+				normalize_loopback_url(P.hr_url);
+			}
+		}
+		if (cfg_hr_name_entry) {
+			s = gtk_entry_get_text(GTK_ENTRY(cfg_hr_name_entry));
+			if (s)
+				g_strlcpy(P.hr_name, s, sizeof(P.hr_name));
+		}
+		for (i = 0; i < N_HR_FEATS; ++i) {
+			if (cfg_hr_feat_btn[i] &&
+			    gtk_toggle_button_get_active(
+			        GTK_TOGGLE_BUTTON(cfg_hr_feat_btn[i])))
+				hr_feats |= HR_METRICS[i].bit;
+		}
+		if (cfg_hr_feat_btn[N_HR_FEATS] &&
+		    gtk_toggle_button_get_active(
+		        GTK_TOGGLE_BUTTON(cfg_hr_feat_btn[N_HR_FEATS])))
+			hr_feats |= HR_FEAT_ENG;
+		if (!hr_feats)
+			hr_feats = DEFAULT_HR_FEATURES;
+
+		if (feats != P.features || hr_en != P.hr_enable ||
+		    hr_feats != P.hr_features ||
+		    strcmp(hr_url_prev, P.hr_url) != 0 ||
+		    strcmp(hr_name_prev, P.hr_name) != 0)
+			rebuild = 1;
 		P.features = feats;
-		rebuild_llm_ui();
+		P.hr_enable = hr_en;
+		P.hr_features = hr_feats;
+		if (rebuild)
+			rebuild_llm_ui();
 	}
 }
 
@@ -6309,6 +6750,10 @@ GkrellmMonitor *gkrellm_init_plugin(void)
 	P.chart_max_prefill = DEFAULT_CHART_MAX_PREFILL;
 	P.timeout_ms = DEFAULT_TIMEOUT_MS;
 	P.prefill_scale_adapt = DEFAULT_CHART_MAX_PREFILL;
+	P.hr_enable = 0;
+	strncpy(P.hr_url, DEFAULT_HR_URL, sizeof(P.hr_url) - 1);
+	strncpy(P.hr_name, DEFAULT_HR_NAME, sizeof(P.hr_name) - 1);
+	P.hr_features = DEFAULT_HR_FEATURES;
 	P.style_id = gkrellm_add_meter_style(&plugin_mon, STYLE_NAME);
 	P.chart_style_id = gkrellm_add_chart_style(&plugin_mon, STYLE_NAME);
 	P.monitor = &plugin_mon;

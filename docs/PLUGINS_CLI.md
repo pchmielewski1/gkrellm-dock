@@ -266,6 +266,10 @@ Every key `scripts/install_config.sh` writes to `~/.gkrellm2/user-config` (GKrel
 | `llm_nim docs_release` | `2.0.10` | NIM docs / schema seed pin |
 | `llm_nim airgap` | `0` | `1` = air-gap / offline |
 | `llm_nim features` | `1908735` | Display bitmask (throughput + TTFT/ITL/E2E/TPOT + prefix/spec/prompt-cache + preempt + req/s + RSS + CPU + wait-reason + engine lamp; core-only = `15`) |
+| `llm_nim headroom_enable` | `0` | `1` = show Headroom dock block under NIM |
+| `llm_nim headroom_url` | `http://127.0.0.1:8788` | Headroom proxy base (JSON `/stats` + `/health`) |
+| `llm_nim headroom_name` | `Headroom` | Headroom header title |
+| `llm_nim headroom_features` | `63` | Headroom strips bitmask (Q\|Tok\|Sav\|Lat\|Req\|Eng) |
 | `llm_nim chart_max_tps` | `50` | Decode chart full scale (t/s) |
 | `llm_nim chart_max_prefill` | `1000` | Prefill chart base scale (t/s) |
 | `llm_nim timeout_ms` | `500` | HTTP scrape timeout (ms) |

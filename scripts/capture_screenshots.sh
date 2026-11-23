@@ -42,24 +42,26 @@ pb.savev(str(full), 'png', [], [])
 im = Image.open(full)
 W, H = im.size
 
-# Region crops tuned for the current layout (~128x2.1k): GPU (+ clock-event
-# dots), LLM NIM (power button, Q under name, in/out, Display strips), CPU
-# clusters, Proc/Disk/Net, folded Docker (net_clusters), Fan/Swap/Board.
+# Region crops tuned for ~128x1780 with Headroom under Qwen (compact Display
+# bits + Headroom Q/Tok/Sav/Lat/Req text strips). GPU (+ clock-event dots),
+# LLM NIM (power + Q + in/out + strips), Headroom block, CPU clusters,
+# Proc/Disk/Net, folded Docker (net_clusters), Fan/Swap/Board.
 # Re-tune Y bounds after large UI changes; see docs/SCREENSHOTS.md.
 regions = {
     'gkrellm-top.png': (0, min(68, H)),
-    'gkrellm-gpu.png': (min(55, H), min(325, H)),
-    'gkrellm-gpu-zoom.png': (min(100, H), min(300, H)),
-    'gkrellm-llm.png': (min(318, H), min(470, H)),
-    'gkrellm-llm-rows.png': (min(318, H), min(1360, H)),
-    'gkrellm-cpu.png': (min(1360, H), min(1665, H)),
-    'gkrellm-cpu-x925.png': (min(1360, H), min(1510, H)),
-    'gkrellm-cpu-a725.png': (min(1510, H), min(1665, H)),
-    'gkrellm-cpu-zone.png': (min(1360, H), min(1665, H)),
-    'gkrellm-proc-area.png': (min(1665, H), min(1745, H)),
-    'gkrellm-gap-proc.png': (min(1665, H), min(1735, H)),
-    'gkrellm-net.png': (min(1745, H), min(1935, H)),
-    'gkrellm-bottom.png': (min(1935, H), H),
+    'gkrellm-gpu.png': (min(55, H), min(320, H)),
+    'gkrellm-gpu-zoom.png': (min(90, H), min(300, H)),
+    'gkrellm-llm.png': (min(318, H), min(480, H)),
+    'gkrellm-llm-rows.png': (min(318, H), min(1082, H)),
+    'gkrellm-headroom.png': (min(1000, H), min(1082, H)),
+    'gkrellm-cpu.png': (min(1082, H), min(1385, H)),
+    'gkrellm-cpu-x925.png': (min(1082, H), min(1245, H)),
+    'gkrellm-cpu-a725.png': (min(1245, H), min(1385, H)),
+    'gkrellm-cpu-zone.png': (min(1082, H), min(1385, H)),
+    'gkrellm-proc-area.png': (min(1385, H), min(1475, H)),
+    'gkrellm-gap-proc.png': (min(1385, H), min(1465, H)),
+    'gkrellm-net.png': (min(1475, H), min(1610, H)),
+    'gkrellm-bottom.png': (min(1610, H), H),
     'gkrellm-slice-top.png': (0, H // 3),
     'gkrellm-slice-mid.png': (H // 3, 2 * H // 3),
     'gkrellm-slice-mid2.png': (2 * H // 3, H),

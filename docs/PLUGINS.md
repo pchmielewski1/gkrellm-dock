@@ -2,7 +2,7 @@
 
 Reference for every monitor in the DGX Spark GB10 dock: data sources, UI, defaults, and config keys.
 
-Managed keys are written by `scripts/install_config.sh` (run by `scripts/install.sh`). **LLM NIM** prefs (`url`, `display_name`, `docs_release`, `airgap`, `features`, chart scales, timeout, slots) are **preserved** if already present — Connection + Display choices survive re-apply. Tokens live under `~/.config/gkrellm-dock/` (not `user-config`).
+Managed keys are written by `scripts/install_config.sh` (run by `scripts/install.sh`). **LLM NIM** prefs (`url`, `display_name`, `docs_release`, `airgap`, `features`, chart scales, timeout, slots, **headroom_***) are **preserved** if already present — Connection + Display + Headroom choices survive re-apply. Tokens live under `~/.config/gkrellm-dock/` (not `user-config`).
 
 ---
 
@@ -82,7 +82,7 @@ Compact panel for a local OpenAI-compatible NIM/vLLM server (reference container
 - **Instances** — list/stop/restart/refresh; adopt/orphans; **Use on dock** (slot 0), **Add to dock** (slots 1–3), **Clear extra slots**.
 
 _Note: the NIM lifecycle helper (`gkrellm-nim`) has moved to a separate NIM lifecycle project._
-- **Options** — decode chart max (t/s); prefill chart max (t/s); scrape **timeout** (ms).
+- **Options** — decode chart max (t/s); prefill chart max (t/s); scrape **timeout** (ms); framed **Headroom proxy** (enable, URL, name, metric checkboxes).
 - **Display** — checkboxes for every feature bit below, in four groups: `Throughput`, `Cache / queue`, `Latency`, `Host / HTTP / sizes`. Full field-by-field reference: [LLM_NIM_UI.md](LLM_NIM_UI.md).
 
 Apply updates live config and reformats status lines immediately.
@@ -116,6 +116,8 @@ Each enabled **Display** bit owns its own strip (show/hide on checkbox, live reb
 
 **Multi-slot:** up to **4** scrape targets. Slot 0 is the full panel above (`url` / `display_name`). Slots 1–3 (config `slotN_url` / `slotN_name`) add a compact header + lamp + one-line summary (`12/s kv=40% q=0`), no charts. The multi-slot lifecycle tooling has moved to a separate NIM lifecycle project.
 
+**Headroom** (optional, under the main NIM panel): JSON scrape of a local [Headroom](https://github.com/headroomlabs-ai/headroom) compression proxy (`/stats` + `/health`). Text-only strips — no LINE charts. Order: **Q** (workers F/Q) → **Tok** → **Sav** % → **Lat** → **Req** `total/failed`. Screenshot: [gkrellm-headroom.png](gkrellm-headroom.png).
+
 ### Histogram means
 
 Histogram-backed bits (TTFT, ITL, E2E, TPOT, queue/prefill/decode/inference times, mean prompt/gen/batch) use a **window mean**: `Δsum / Δcount` over the scrape interval when the counter advances; otherwise the lifetime `_sum / _count` from the metric.
@@ -139,6 +141,10 @@ Prefill vs session `in`: `vllm:prompt_tokens_total` usually advances in **one ju
 | `llm_nim dock_slots` | _(optional)_ | Enabled slot count hint (cap 4) |
 | `llm_nim slot1_url` … `slot3_url` | _(empty)_ | Extra dock scrape URLs |
 | `llm_nim slot1_name` … `slot3_name` | _(empty)_ | Extra dock display names |
+| `llm_nim headroom_enable` | `0` | `1` = show Headroom dock block |
+| `llm_nim headroom_url` | `http://127.0.0.1:8788` | Headroom proxy base URL |
+| `llm_nim headroom_name` | `Headroom` | Headroom header title |
+| `llm_nim headroom_features` | `63` | Headroom strip bitmask (Q\|Tok\|Sav\|Lat\|Req\|Eng) |
 
 ### Features bitmask (bits 0–26)
 

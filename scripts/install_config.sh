@@ -39,6 +39,10 @@ LLM_SLOT2_URL=""
 LLM_SLOT2_NAME=""
 LLM_SLOT3_URL=""
 LLM_SLOT3_NAME=""
+LLM_HR_ENABLE="0"
+LLM_HR_URL="http://127.0.0.1:8788"
+LLM_HR_NAME="Headroom"
+LLM_HR_FEATURES="63"
 
 # Net Clusters: interfaces folded into one chart (container veth by default)
 NETC_PATTERN="^veth"
@@ -79,6 +83,14 @@ if [[ -f "$CFG" ]]; then
   [[ -n "${v:-}" ]] && LLM_SLOT3_URL="$v"
   v="$(sed -n 's/^llm_nim slot3_name //p' "$CFG" | head -n1 || true)"
   [[ -n "${v:-}" ]] && LLM_SLOT3_NAME="$v"
+  v="$(awk '/^llm_nim headroom_enable / { print $3; exit }' "$CFG" || true)"
+  [[ -n "${v:-}" ]] && LLM_HR_ENABLE="$v"
+  v="$(awk '/^llm_nim headroom_url / { print $3; exit }' "$CFG" || true)"
+  [[ -n "${v:-}" ]] && LLM_HR_URL="$v"
+  v="$(sed -n 's/^llm_nim headroom_name //p' "$CFG" | head -n1 || true)"
+  [[ -n "${v:-}" ]] && LLM_HR_NAME="$v"
+  v="$(awk '/^llm_nim headroom_features / { print $3; exit }' "$CFG" || true)"
+  [[ -n "${v:-}" ]] && LLM_HR_FEATURES="$v"
 fi
 
 # Write to a temp file then mv — a mid-script failure must not truncate
@@ -176,6 +188,10 @@ llm_nim features $LLM_FEATURES
 llm_nim chart_max_tps $LLM_TPS
 llm_nim chart_max_prefill $LLM_PREFILL
 llm_nim timeout_ms $LLM_TIMEOUT
+llm_nim headroom_enable $LLM_HR_ENABLE
+llm_nim headroom_url $LLM_HR_URL
+llm_nim headroom_name $LLM_HR_NAME
+llm_nim headroom_features $LLM_HR_FEATURES
 # Disk: composite only. Fields: h grid_res fixed_grids auto stick seq125.
 # 5 grids + auto from 1 MB/s seed → visible scale lines; \$M tracks live max
 # (old fixed 40MB×5=200M ceiling is gone).

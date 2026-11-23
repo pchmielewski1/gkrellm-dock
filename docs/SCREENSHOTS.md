@@ -22,7 +22,7 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 | [`configure-llm-local.png`](configure-llm-local.png) | **LLM NIM → Local** — local Docker images, Profiles, Make recipe (see [LLM_NIM_UI.md](LLM_NIM_UI.md#local)) |
 | [`configure-llm-recipes.png`](configure-llm-recipes.png) | **LLM NIM → Recipes** — JSON editor, profile, Start/Stop/Export (see [LLM_NIM_UI.md](LLM_NIM_UI.md#recipes)) |
 | [`configure-llm-instances.png`](configure-llm-instances.png) | **LLM NIM → Instances** — running containers, dock slots, adopt/orphans (see [LLM_NIM_UI.md](LLM_NIM_UI.md#instances)) |
-| [`configure-llm-options.png`](configure-llm-options.png) | **LLM NIM → Options** — chart scales, scrape timeout (see [LLM_NIM_UI.md](LLM_NIM_UI.md#options)) |
+| [`configure-llm-options.png`](configure-llm-options.png) | **LLM NIM → Options** — chart scales, scrape timeout, **Headroom proxy** block (see [LLM_NIM_UI.md](LLM_NIM_UI.md#options)) |
 | [`configure-llm-display.png`](configure-llm-display.png) | **LLM NIM → Display** — 27 metric checkboxes in four groups (see [LLM_NIM_UI.md](LLM_NIM_UI.md#display-tab)) |
 
 ## Dock panel captures
@@ -35,7 +35,8 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 | [`gkrellm-gpu.png`](gkrellm-gpu.png) | NVIDIA GB10 — Load, Clock, Power, **6 clock-event dots**, Temp, UMA % |
 | [`gkrellm-gpu-zoom.png`](gkrellm-gpu-zoom.png) | Closer crop of GPU charts + dots |
 | [`gkrellm-llm.png`](gkrellm-llm.png) | NIM header: model + **power button** + engine lamp; **Q** under name; **`in`/`out`** session totals; Dec start |
-| [`gkrellm-llm-rows.png`](gkrellm-llm-rows.png) | Full LLM NIM panel (all enabled Display strips + LINE charts) |
+| [`gkrellm-llm-rows.png`](gkrellm-llm-rows.png) | Full LLM panel (enabled Display strips + LINE charts) **plus Headroom block** |
+| [`gkrellm-headroom.png`](gkrellm-headroom.png) | **Headroom** proxy: lamp, **Q** F/Q, **Tok**, **Sav** %, **Lat**, **Req** total/failed (text-only) |
 | [`gkrellm-cpu.png`](gkrellm-cpu.png) | Both Grace clusters — **CPU X925** and **CPU A725** |
 | [`gkrellm-cpu-x925.png`](gkrellm-cpu-x925.png) | X925 cluster only |
 | [`gkrellm-cpu-a725.png`](gkrellm-cpu-a725.png) | A725 cluster only |
@@ -50,8 +51,10 @@ Captured from **Configure → Plugins** while the dialog is open (`DISPLAY=:1`).
 
 ## Notes
 
-- Crop Y bounds assume the current layout (~2.1k px tall: GPU with clock-event dots, LLM NIM with power button + Q under name + Display bits, CPU clusters, Proc/Disk/Net, folded Docker chart, Fan/Swap/Board; `uma_dram.so` not enabled). After changing which metrics or plugins are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
-- The dock must fit on screen for the capture (a 4K display fits it at ~2.1k px); the script reads the window straight from the X root window.
+- Crop Y bounds assume the current layout (~128×1780: GPU with clock-event dots, LLM NIM with power button + Q under name + compact Display bits, **Headroom** text block, CPU clusters, Proc/Disk/Net, folded Docker chart, Fan/Swap/Board; `uma_dram.so` not enabled). After changing which metrics or plugins are shown, re-run the capture script and adjust bounds in `scripts/capture_screenshots.sh` if sections drift.
+- The dock must fit on screen for the capture (a 4K display fits it); the script reads the window straight from the X root window.
 - `gkrellm-mem-zoom.png` was removed together with the default DRAM UMA panel; UMA % is the last row of the GPU block (`gkrellm-gpu.png`).
 - Engine status is the green/yellow/red/gray lamp on the model header row (rightmost). The **power button** (beveled, colour = stopped/starting/running) sits left of that lamp.
 - **`in` / `out`** under **Q** are session Prefill / Decode token totals for the current GKrellM dock process (see [PLUGINS.md](PLUGINS.md) · LLM NIM).
+- **Headroom** (optional second block under the NIM panel) scrapes JSON `GET {headroom_url}/stats?cached=1` + `/health` — not Prometheus. Configure under **Options → Headroom proxy**.
+- Re-capture **Configure** dialogs with the dialog open on the matching tab (`DISPLAY=:1`). Options must show the **Headroom proxy** framed section.
